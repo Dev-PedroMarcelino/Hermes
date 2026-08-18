@@ -105,7 +105,7 @@ O motor autentica por Firebase Auth:
 1. Firebase Console → **Authentication** → ative **E-mail/senha** e crie seu usuário.
 2. Coloque o mesmo e-mail em `ALLOWED_OPERATORS` no `.env` do motor.
 
-Com `ALLOWED_OPERATORS` vazio, as rotas autenticadas recusam tudo — de propósito, para o motor nunca ficar aberto.
+`ALLOWED_OPERATORS` vazio significa **qualquer conta do projeto Firebase pode operar** — cômodo para uso solo. Nesse modo, desative a auto-inscrição em *Firebase Console → Authentication → Settings → User actions*, senão qualquer pessoa pode criar uma conta no projeto e entrar. O login continua obrigatório de qualquer forma.
 
 ### 4. Instalar e rodar
 

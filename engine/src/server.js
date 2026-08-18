@@ -56,7 +56,9 @@ app.get('/health', (req, res) => {
       instagram: Boolean(config.oauth.instagram.appId && config.oauth.instagram.appSecret)
     },
     worker: { ativo: isWorkerRunning(), noMesmoProcesso: config.runWorkerInProcess },
-    operadoresConfigurados: config.allowedOperators.length,
+    acesso: config.allowedOperators.length > 0
+      ? { modo: 'allowlist', operadores: config.allowedOperators.length }
+      : { modo: 'qualquer-conta-autenticada', aviso: 'desative a auto-inscrição no Firebase Auth' },
     estrategiaDeVideo: config.publicVideoStrategy,
     timestamp: new Date().toISOString()
   });
@@ -317,7 +319,9 @@ app.listen(config.port, '0.0.0.0', async () => {
   console.log(`   Vídeo:    estratégia "${config.publicVideoStrategy}"`);
 
   if (config.allowedOperators.length === 0) {
-    console.warn('   ⚠️  ALLOWED_OPERATORS vazio — as rotas autenticadas vão recusar tudo.');
+    console.warn('   ⚠️  ALLOWED_OPERATORS vazio — QUALQUER conta do projeto Firebase pode operar.');
+    console.warn('       Desative a auto-inscrição em Firebase Console → Authentication →');
+    console.warn('       Settings → User actions antes de expor o motor publicamente.');
   }
 
   if (config.runWorkerInProcess) {

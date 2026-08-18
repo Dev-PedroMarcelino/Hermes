@@ -31,23 +31,21 @@ export async function requireAuth(req, res, next) {
     });
   }
 
-  // An empty allowlist would let anyone who can self-register in the Firebase
-  // project operate the factory, so refuse to run wide open.
-  if (config.allowedOperators.length === 0) {
-    return res.status(500).json({
-      error:
-        'ALLOWED_OPERATORS não configurado no motor. Defina os e-mails (ou UIDs) autorizados antes de usar a API.'
-    });
-  }
+  // With no allowlist, any account that exists in the Firebase project may
+  // operate. That is fine for a single-operator setup, but it means anyone who
+  // can create an account in the project gets in — so disable self sign-up in
+  // Firebase Console → Authentication → Settings → User actions before exposing
+  // the engine publicly.
+  if (config.allowedOperators.length > 0) {
+    const email = (decoded.email || '').toLowerCase();
+    const authorized = config.allowedOperators.some(
+      entry => entry === decoded.uid || entry.toLowerCase() === email
+    );
 
-  const email = (decoded.email || '').toLowerCase();
-  const authorized = config.allowedOperators.some(
-    entry => entry === decoded.uid || entry.toLowerCase() === email
-  );
-
-  if (!authorized) {
-    console.warn(`[Auth] Acesso negado para ${email || decoded.uid}`);
-    return res.status(403).json({ error: 'Esta conta não tem permissão para operar o Hermes.' });
+    if (!authorized) {
+      console.warn(`[Auth] Acesso negado para ${email || decoded.uid}`);
+      return res.status(403).json({ error: 'Esta conta não tem permissão para operar o Hermes.' });
+    }
   }
 
   req.operator = { uid: decoded.uid, email: decoded.email || null };
