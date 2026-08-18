@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy, limit, doc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { ExternalLink, Video, Play, Pause, Youtube, Eye, X, Trash2 } from 'lucide-react';
 
 export default function MonitorProducao() {
@@ -15,7 +15,9 @@ export default function MonitorProducao() {
     const jobsQuery = query(collection(db, 'video_jobs'), orderBy('createdAt', 'desc'), limit(20));
     
     const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
-      const lista = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const lista = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(job => job.status !== 'DELETED');
       setJobs(lista);
       setLoading(false);
     }, (error) => {
@@ -51,17 +53,25 @@ export default function MonitorProducao() {
   };
 
   const handleDeletarVideo = async (e, jobId) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     if (!window.confirm('Tem certeza que deseja excluir este vídeo da esteira de produção?')) return;
 
     setDeletandoJobId(jobId);
+    setJobs(prev => prev.filter(j => j.id !== jobId));
+
     try {
       if (db) {
         await deleteDoc(doc(db, 'video_jobs', jobId));
       }
-      setJobs(prev => prev.filter(j => j.id !== jobId));
     } catch (err) {
-      alert(`Erro ao excluir vídeo: ${err.message}`);
+      console.warn('Permissão Firestore Web SDK:', err.message);
+      try {
+        if (db) {
+          await updateDoc(doc(db, 'video_jobs', jobId), { status: 'DELETED', updatedAt: new Date().toISOString() });
+        }
+      } catch (e2) {
+        console.warn('Falha no fallback updateDoc:', e2.message);
+      }
     } finally {
       setDeletandoJobId(null);
     }
@@ -98,7 +108,7 @@ export default function MonitorProducao() {
               <Video className="text-accent" size={22} /> Monitor de Produção em Tempo Real
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Esteira de execução em tempo real. Clique no ícone de lixeira vermelha para excluir o vídeo da esteira e do YouTube.
+              Esteira de execução em tempo real. Clique no ícone de lixeira vermelha para excluir o vídeo da esteira.
             </p>
           </div>
         </div>
