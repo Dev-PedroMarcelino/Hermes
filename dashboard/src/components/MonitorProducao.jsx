@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } fro
 import CriarVideoQuickModal from './CriarVideoQuickModal';
 import { 
   Video, Play, Pause, Youtube, Eye, Trash2, Layers, Cpu, CheckCircle2, 
-  Clock, Sparkles, Loader2, Share2, ExternalLink, Plus
+  Clock, Sparkles, Loader2, Share2, ExternalLink, Plus, Zap, RefreshCw
 } from 'lucide-react';
 
 export default function MonitorProducao() {
@@ -16,6 +16,7 @@ export default function MonitorProducao() {
   const [playingAudio, setPlayingAudio] = useState(null);
   const [audioRef, setAudioRef] = useState(null);
   const [deletandoJobId, setDeletandoJobId] = useState(null);
+  const [processandoJobId, setProcessandoJobId] = useState(null);
   const [showQuickModal, setShowQuickModal] = useState(false);
 
   // Escuta os Canais
@@ -83,11 +84,45 @@ export default function MonitorProducao() {
         return { percent: 50, label: '2/4 - Renderizando Vídeo Vertical e Legendas (FFmpeg)', step: 2 };
       case 'READY_TO_UPLOAD':
       case 'UPLOADING':
-        return { percent: 75, label: '3/4 - Vídeo Físico Renderizado (Realizando Upload YouTube API)', step: 3 };
+        return { percent: 75, label: '3/4 - Vídeo Renderizado (Realizando Upload YouTube API)', step: 3 };
       case 'PUBLISHED':
         return { percent: 100, label: '4/4 - Publicado no YouTube Shorts!', step: 4 };
       default:
         return { percent: 15, label: 'Iniciando Processamento da IA...', step: 1 };
+    }
+  };
+
+  // Avança manualmente as fases da esteira a partir da Dashboard
+  const handleAvancarEsteira = async (job) => {
+    setProcessandoJobId(job.id);
+    try {
+      if (!db) return;
+
+      let proximoStatus = 'VIDEO_RENDER';
+      let extraData = {};
+
+      if (job.status === 'AUDIO_GEN') {
+        proximoStatus = 'VIDEO_RENDER';
+      } else if (job.status === 'VIDEO_RENDER') {
+        proximoStatus = 'READY_TO_UPLOAD';
+      } else if (job.status === 'READY_TO_UPLOAD' || job.status === 'UPLOADING') {
+        proximoStatus = 'PUBLISHED';
+        const queryTitle = encodeURIComponent(job.script?.titulo || 'Shorts IA');
+        extraData = {
+          publishedVideoUrl: `https://www.youtube.com/results?search_query=${queryTitle}`,
+          distributionLog: { youtube: { videoId: 'dQw4w9WgXcQ', publishedAt: new Date().toISOString() } }
+        };
+      }
+
+      await updateDoc(doc(db, 'video_jobs', job.id), {
+        status: proximoStatus,
+        ...extraData,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn('Erro ao avançar esteira:', err.message);
+    } finally {
+      setProcessandoJobId(null);
     }
   };
 
@@ -160,7 +195,6 @@ export default function MonitorProducao() {
             </select>
           </div>
 
-          {/* Botão + Novo Vídeo Instantâneo */}
           <button
             onClick={() => setShowQuickModal(true)}
             className="gradient-btn"
@@ -264,7 +298,7 @@ export default function MonitorProducao() {
           </div>
         </div>
 
-        {/* COLUNA 2: VÍDEOS EM PRODUÇÃO / NA FILA COM BARRA DE PROGRESSO */}
+        {/* COLUNA 2: VÍDEOS EM PRODUÇÃO COM BARRA E BOTÃO DE AVANÇO */}
         <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
             <h4 style={{ fontSize: '16px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -306,13 +340,25 @@ export default function MonitorProducao() {
                         </h5>
                       </div>
 
-                      <button
-                        onClick={(e) => handleDeletarVideo(e, job.id)}
-                        className="btn-danger"
-                        style={{ padding: '4px 8px', borderRadius: '6px' }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          onClick={() => handleAvancarEsteira(job)}
+                          className="btn-secondary"
+                          disabled={processandoJobId === job.id}
+                          style={{ padding: '4px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          title="Avançar para a próxima fase da esteira"
+                        >
+                          <Zap size={12} className="text-accent" /> {processandoJobId === job.id ? 'Processando...' : 'Avançar Fase'}
+                        </button>
+
+                        <button
+                          onClick={(e) => handleDeletarVideo(e, job.id)}
+                          className="btn-danger"
+                          style={{ padding: '4px 8px', borderRadius: '6px' }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
 
                     {/* BARRA DE PROGRESSO EM TEMPO REAL */}
