@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
-import { Sparkles, Layers, Film, CheckCircle2, Sliders, Play, Zap, Cpu } from 'lucide-react';
+import { Sparkles, Layers, Film, CheckCircle2, Zap, Cpu } from 'lucide-react';
 
 export default function CriarPautaManual() {
   const [canais, setCanais] = useState([]);
@@ -98,15 +98,15 @@ export default function CriarPautaManual() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-      <div className="glass-panel tech-card" style={{ padding: '32px' }}>
-        <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div className="glass-panel tech-card" style={{ padding: '28px' }}>
+        <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h3 style={{ fontSize: '20px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Film className="text-accent" size={24} /> Criar Pauta Manual & Motor de Minisséries
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Forneça um tema customizado ou ative o gerador de minisséries com <strong>cliffhangers dramáticos</strong>.
+              Forneça um tema customizado ou ative o gerador de minisséries com <strong>cliffhangers virais</strong>.
             </p>
           </div>
 
@@ -115,8 +115,8 @@ export default function CriarPautaManual() {
           </span>
         </div>
 
-        <form onSubmit={handleCriarPauta} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px' }}>
+        <form onSubmit={handleCriarPauta} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="grid-responsive-2" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '16px' }}>
             <div>
               <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                 <Layers size={14} className="text-accent" /> Selecione o Canal (Tenant)
@@ -150,15 +150,15 @@ export default function CriarPautaManual() {
             </div>
           </div>
 
-          {/* Painel de Controle de Minissérie */}
+          {/* Painel de Controle da Minissérie Responsivo */}
           <div style={{
             background: 'rgba(0, 255, 135, 0.03)',
             border: '1px solid rgba(0, 255, 135, 0.25)',
-            padding: '24px',
+            padding: '20px',
             borderRadius: '16px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px'
+            gap: '14px'
           }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
               <input
@@ -172,24 +172,26 @@ export default function CriarPautaManual() {
                   Transformar em Minissérie (Dividir em Partes Encadeadas)
                 </span>
                 <span style={{ fontSize: '12px', display: 'block', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Gera episódios onde cada roteiro termina com um gancho/cliffhanger conectando à próxima parte.
+                  Gera episódios onde cada roteiro termina com um cliffhanger conectando à próxima parte.
                 </span>
               </div>
             </label>
 
             {isMiniseries && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '18px', paddingTop: '14px', borderTop: '1px solid rgba(0, 255, 135, 0.15)' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600 }}>Sequência de Partes:</span>
-                <select
-                  className="input-field"
-                  style={{ width: '240px' }}
-                  value={quantidadePartes}
-                  onChange={(e) => setQuantidadePartes(e.target.value)}
-                >
-                  <option value="2">2 Partes (Dueto de Vídeos)</option>
-                  <option value="3">3 Partes (Trilogia Recomendada)</option>
-                  <option value="5">5 Partes (Série Completa Cash-Cow)</option>
-                </select>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingTop: '12px', borderTop: '1px solid rgba(0, 255, 135, 0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600 }}>Sequência de Partes:</span>
+                  <select
+                    className="input-field"
+                    style={{ maxWidth: '240px' }}
+                    value={quantidadePartes}
+                    onChange={(e) => setQuantidadePartes(e.target.value)}
+                  >
+                    <option value="2">2 Partes (Dueto de Vídeos)</option>
+                    <option value="3">3 Partes (Trilogia Recomendada)</option>
+                    <option value="5">5 Partes (Série Completa Cash-Cow)</option>
+                  </select>
+                </div>
                 <span style={{ fontSize: '12px', color: '#00ff87', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Zap size={14} /> Gancho de 3s em todas as partes!
                 </span>
@@ -197,14 +199,14 @@ export default function CriarPautaManual() {
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <button type="submit" className="gradient-btn" disabled={salvando} style={{ height: '48px', padding: '0 32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <button type="submit" className="gradient-btn" disabled={salvando} style={{ height: '48px', padding: '0 28px' }}>
               {salvando ? 'Processando no Gemini...' : isMiniseries ? 'Gerar Minissérie Encadeada' : 'Cadastrar Pauta Manual'}
             </button>
 
             {sucessoMsg && (
-              <span style={{ color: '#00ff87', fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle2 size={18} /> {sucessoMsg}
+              <span style={{ color: '#00ff87', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={16} /> {sucessoMsg}
               </span>
             )}
           </div>
