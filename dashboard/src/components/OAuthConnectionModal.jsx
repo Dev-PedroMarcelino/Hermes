@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X, Youtube, ExternalLink, CheckCircle2, AlertCircle, Loader2, Music2, Instagram, Unlink } from 'lucide-react';
-import { startOAuthConnection, disconnectNetwork, getEngineHealth } from '../lib/engineApi';
+import { startOAuthConnection, disconnectNetwork, getEngineHealth, getAppCredentialsStatus } from '../lib/engineApi';
 
 const NETWORK_META = {
   youtube: {
@@ -50,29 +50,35 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
   const [status, setStatus] = useState('idle'); // idle | starting | waiting | success | error
   const [errorMessage, setErrorMessage] = useState('');
   const [engineReady, setEngineReady] = useState(null);
+  const [appSource, setAppSource] = useState('platform');
 
   const meta = NETWORK_META[rede] || NETWORK_META.youtube;
   const { Icon } = meta;
   const connectionInfo = channel.conexoes?.[rede];
   const isConnected = connectionInfo?.status === 'CONNECTED';
 
-  // Check whether the engine has credentials configured for this network
+  // Can this channel start an OAuth flow for this network?
+  //
+  // /health only reports the platform-wide app from the engine's environment. A
+  // channel that registered its own app can connect even when that shared app is
+  // absent, so both sources are consulted — otherwise the per-channel app
+  // feature would be unusable whenever the shared app is not configured.
   useEffect(() => {
     let cancelled = false;
-    getEngineHealth()
-      .then(health => {
-        if (!cancelled) setEngineReady(Boolean(health.networks?.[rede]));
-      })
-      .catch(err => {
-        if (!cancelled) {
-          setEngineReady(false);
-          setErrorMessage(err.message);
-        }
-      });
+
+    Promise.all([
+      getEngineHealth().then(h => Boolean(h.networks?.[rede])).catch(() => false),
+      getAppCredentialsStatus(channel.id).then(s => s?.[rede] || null).catch(() => null)
+    ]).then(([platformApp, channelApp]) => {
+      if (cancelled) return;
+      setAppSource(channelApp?.source === 'tenant' ? 'tenant' : 'platform');
+      setEngineReady(channelApp ? Boolean(channelApp.usable) : platformApp);
+    });
+
     return () => {
       cancelled = true;
     };
-  }, [rede]);
+  }, [rede, channel.id]);
 
   // The engine's callback redirects the browser back to the dashboard with
   // ?oauth=success|error, so read that on mount.
@@ -176,8 +182,13 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
           }}>
             <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
             <div style={{ fontSize: '12px', color: '#e5e5e5', lineHeight: 1.5 }}>
-              <strong>O motor não tem credenciais de {meta.label} configuradas.</strong><br />
-              Preencha as variáveis correspondentes no <code>.env</code> e reinicie o motor.
+              <strong>Nenhum app OAuth de {meta.label} disponível para este canal.</strong><br />
+              Cadastre um <em>app próprio deste canal</em> na aba de credenciais, ou defina o app
+              padrão nas variáveis de ambiente do motor e reinicie.<br />
+              <span style={{ color: 'var(--text-secondary)' }}>
+                São credenciais do <strong>aplicativo</strong> (client id/secret), não da conta —
+                os tokens do canal vêm do banco na hora de publicar.
+              </span>
             </div>
           </div>
         )}
@@ -186,9 +197,17 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
           background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)',
           padding: '16px', borderRadius: '12px'
         }}>
-          <h4 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>
-            Pré-requisitos da plataforma
-          </h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '10px' }}>
+            <h4 style={{ fontSize: '13px', fontWeight: 700 }}>Pré-requisitos da plataforma</h4>
+            {engineReady && (
+              <span className="badge" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}
+                title={appSource === 'tenant'
+                  ? 'Este canal usa um app OAuth próprio — cota isolada dos demais.'
+                  : 'Este canal usa o app OAuth padrão do motor, compartilhado com os outros canais.'}>
+                {appSource === 'tenant' ? 'App próprio do canal' : 'App padrão (compartilhado)'}
+              </span>
+            )}
+          </div>
           <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             {meta.requirements.map(item => <li key={item}>{item}</li>)}
           </ul>
