@@ -32,29 +32,66 @@ const INSTAGRAM_SCOPES = [
   'business_management'
 ];
 
-/** In-memory CSRF state store: state -> { tenantId, network, createdAt } */
-const pendingStates = new Map();
+/**
+ * CSRF state store, persisted in Firestore.
+ *
+ * This deliberately does not live in process memory: the authorization flow
+ * spans two separate requests minutes apart, and any restart in between (a
+ * deploy, or a host that idles the service down) would lose the state and fail
+ * the callback with "state inválido". Firestore also lets more than one engine
+ * instance serve the flow.
+ */
 const STATE_TTL_MS = 10 * 60 * 1000;
+const STATE_COLLECTION = 'oauth_states';
 
-function pruneExpiredStates() {
-  const now = Date.now();
-  for (const [state, entry] of pendingStates) {
-    if (now - entry.createdAt > STATE_TTL_MS) pendingStates.delete(state);
-  }
-}
-
-export function createOAuthState(tenantId, network) {
-  pruneExpiredStates();
+export async function createOAuthState(tenantId, network) {
   const state = crypto.randomBytes(24).toString('hex');
-  pendingStates.set(state, { tenantId, network, createdAt: Date.now() });
+  await db.collection(STATE_COLLECTION).doc(state).set({
+    tenantId,
+    network,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + STATE_TTL_MS).toISOString()
+  });
   return state;
 }
 
-export function consumeOAuthState(state) {
-  pruneExpiredStates();
-  const entry = pendingStates.get(state);
-  if (entry) pendingStates.delete(state);
-  return entry || null;
+/**
+ * Reads and deletes a state in one transaction, so a replayed callback cannot
+ * reuse it.
+ */
+export async function consumeOAuthState(state) {
+  const stateRef = db.collection(STATE_COLLECTION).doc(state);
+
+  const entry = await db.runTransaction(async tx => {
+    const snap = await tx.get(stateRef);
+    if (!snap.exists) return null;
+    tx.delete(stateRef);
+    return snap.data();
+  });
+
+  if (!entry) return null;
+  if (entry.expiresAt && entry.expiresAt < new Date().toISOString()) return null;
+  return entry;
+}
+
+/**
+ * Removes abandoned states (the user opened the consent screen and never
+ * finished). Called opportunistically; failures are not worth surfacing.
+ */
+export async function pruneExpiredStates() {
+  try {
+    const stale = await db
+      .collection(STATE_COLLECTION)
+      .where('expiresAt', '<', new Date().toISOString())
+      .limit(50)
+      .get();
+
+    await Promise.all(stale.docs.map(doc => doc.ref.delete()));
+    return stale.size;
+  } catch (err) {
+    console.warn('[OAuth] Falha ao limpar states expirados:', err.message);
+    return 0;
+  }
 }
 
 export function getRedirectUri(network) {
@@ -191,7 +228,7 @@ export async function getAppCredentialsStatus({ tenantId }) {
  */
 export async function buildAuthUrl({ network, tenantId }) {
   const { credentials } = await resolveAppCredentials({ tenantId, network });
-  const state = createOAuthState(tenantId, network);
+  const state = await createOAuthState(tenantId, network);
   const redirectUri = getRedirectUri(network);
 
   if (network === 'youtube') {

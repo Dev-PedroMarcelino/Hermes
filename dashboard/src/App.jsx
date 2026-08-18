@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth } from './firebase';
+import LoginScreen from './components/LoginScreen';
 import MonitorProducao from './components/MonitorProducao';
 import GerenciadorCanais from './components/GerenciadorCanais';
 import CriarPautaManual from './components/CriarPautaManual';
 import ConfiguracoesGlobaisModal from './components/ConfiguracoesGlobaisModal';
-import { Video, Radio, Film, Zap, Settings, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { Video, Radio, Film, Zap, Settings, CheckCircle2, AlertCircle, X, LogOut, Loader2 } from 'lucide-react';
 
 const NOMES_DE_REDE = { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram' };
 
@@ -11,6 +14,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('manual');
   const [showSettings, setShowSettings] = useState(false);
   const [oauthResult, setOauthResult] = useState(null);
+  const [operador, setOperador] = useState(null);
+  const [verificandoSessao, setVerificandoSessao] = useState(true);
+
+  // Firebase restores the session from storage asynchronously, so we must wait
+  // before deciding whether to show the login screen.
+  useEffect(() => {
+    return onAuthStateChanged(auth, user => {
+      setOperador(user);
+      setVerificandoSessao(false);
+    });
+  }, []);
 
   // The engine's OAuth callback redirects the whole browser back here, so the
   // outcome has to be read at the app level — the modal that started the flow
@@ -28,6 +42,20 @@ export default function App() {
     });
     window.history.replaceState({}, '', window.location.pathname);
   }, []);
+
+  if (verificandoSessao) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: '10px', color: 'var(--text-secondary)', fontSize: '13px'
+      }}>
+        <Loader2 size={18} className="text-accent" style={{ animation: 'spin 1s linear infinite' }} />
+        Verificando sessão...
+      </div>
+    );
+  }
+
+  if (!operador) return <LoginScreen />;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -141,7 +169,7 @@ export default function App() {
             </button>
           </nav>
 
-          {/* System Status Pill & Settings */}
+          {/* System Status Pill, Settings & Operator */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span className="badge badge-active">
               <Zap size={12} className="text-accent" /> IA ONLINE
@@ -153,6 +181,15 @@ export default function App() {
               style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
             >
               <Settings size={16} /> Configurações
+            </button>
+
+            <button
+              onClick={() => signOut(auth)}
+              className="btn-secondary"
+              title={`Sair (${operador.email})`}
+              style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+            >
+              <LogOut size={16} /> Sair
             </button>
           </div>
         </div>

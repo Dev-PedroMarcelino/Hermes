@@ -9,13 +9,15 @@ import { generateSpeech } from './ttsService.js';
 import { generateAssSubtitles } from './subtitleService.js';
 import { fetchStockVideos } from './mediaCollectorService.js';
 import { renderFinalVideo, probeDuration } from './renderEngine.js';
-import { uploadVideoToStorage } from './storageService.js';
+import { createPublicVideoUrl } from './publicVideoService.js';
 import { uploadToYouTubeShorts } from './uploaders/youtubeUploader.js';
 import { uploadToTikTok, refreshTikTokToken, waitForTikTokPublish } from './uploaders/tiktokUploader.js';
 import { uploadToInstagramReels } from './uploaders/instagramUploader.js';
 
-const TEMP_DIR = path.resolve('./tmp_jobs');
-const OUTPUT_DIR = path.resolve('./output/videos');
+// Resolved from config so the location does not depend on which directory npm
+// was invoked from, and can be pointed at a writable path on ephemeral hosts.
+const TEMP_DIR = config.paths.temp;
+const OUTPUT_DIR = config.paths.output;
 
 /**
  * Job status ladder. The dashboard renders its progress bar off these values,
@@ -198,20 +200,20 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
     const distributionLog = {};
     let publishedVideoUrl = null;
 
-    // TikTok and Instagram download the file from a URL, so it only gets
-    // uploaded to Storage when one of them is actually a target.
-    const needsPublicUrl = targetNetworks.some(n => ['TIKTOK', 'INSTAGRAM_REELS'].includes(n));
+    // Only Instagram fetches the file from a URL. TikTok receives the bytes
+    // directly through chunked FILE_UPLOAD, so it needs no public URL.
+    const needsPublicUrl = targetNetworks.includes('INSTAGRAM_REELS');
     let publicVideoUrl = null;
     let storagePath = null;
 
     if (needsPublicUrl) {
       try {
-        const uploaded = await uploadVideoToStorage({ localFilePath: outputVideoPath, tenantId, jobId });
-        publicVideoUrl = uploaded.publicUrl;
-        storagePath = uploaded.storagePath;
-        console.log('[Pipeline] Vídeo publicado no Storage para TikTok/Instagram.');
+        const published = await createPublicVideoUrl({ localFilePath: outputVideoPath, tenantId, jobId });
+        publicVideoUrl = published.publicUrl;
+        storagePath = published.storagePath;
+        console.log(`[Pipeline] URL pública do vídeo pronta (estratégia: ${published.strategy}).`);
       } catch (err) {
-        console.error('[Pipeline] Falha ao subir para o Storage:', err.message);
+        console.error('[Pipeline] Falha ao expor o vídeo publicamente:', err.message);
       }
     }
 

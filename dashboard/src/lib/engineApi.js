@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { auth } from '../firebase';
 
 /**
  * Client for the Hermes engine API.
@@ -7,10 +8,14 @@ import axios from 'axios';
  * it asks the engine to queue a job and then watches the job document update in
  * real time. Firestore stays the read model; the engine owns all writes to the
  * production pipeline.
+ *
+ * Requests carry a Firebase Auth ID token. An API key was used here before, but
+ * Vite inlines every VITE_* value into the shipped bundle, so on a public deploy
+ * that key is readable by anyone — and it was enough to publish to the connected
+ * channels. ID tokens are short-lived, per-user, and verified server-side.
  */
 
 const BASE_URL = (import.meta.env.VITE_ENGINE_URL || 'http://localhost:3001').replace(/\/$/, '');
-const API_KEY = import.meta.env.VITE_ENGINE_API_KEY || '';
 
 const client = axios.create({
   baseURL: BASE_URL,
@@ -18,24 +23,34 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
-client.interceptors.request.use(config => {
-  if (API_KEY) config.headers['x-api-key'] = API_KEY;
-  return config;
+client.interceptors.request.use(async requestConfig => {
+  const user = auth.currentUser;
+  if (user) {
+    // getIdToken refreshes automatically when the current token is near expiry
+    requestConfig.headers.Authorization = `Bearer ${await user.getIdToken()}`;
+  }
+  return requestConfig;
 });
 
 /** Turns an axios failure into a message worth showing a human. */
 function toReadableError(error) {
+  if (error.response?.status === 401) {
+    return new Error(error.response.data?.error || 'Sessão expirada. Faça login novamente.');
+  }
+  if (error.response?.status === 403) {
+    return new Error(
+      error.response.data?.error ||
+        'Esta conta não está autorizada. Adicione o e-mail em ALLOWED_OPERATORS no motor.'
+    );
+  }
   if (error.response?.data?.error) return new Error(error.response.data.error);
   if (error.code === 'ERR_NETWORK') {
-    return new Error(
-      `Não foi possível falar com o motor em ${BASE_URL}. Ele está rodando? (npm run engine)`
-    );
+    return new Error(`Não foi possível falar com o motor em ${BASE_URL}. Ele está online?`);
   }
   return new Error(error.message || 'Erro desconhecido ao chamar o motor.');
 }
 
 export const engineBaseUrl = BASE_URL;
-export const engineApiKeyConfigured = Boolean(API_KEY);
 
 /** Engine health plus which networks have credentials configured. */
 export async function getEngineHealth() {

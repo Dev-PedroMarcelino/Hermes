@@ -1,0 +1,93 @@
+# Render Blueprint — motor Hermes (API + worker no mesmo processo)
+#
+# Um unico Web Service de graca. O Render nao oferece Background Worker no
+# plano free, por isso ENABLE_WORKER=true faz o proprio processo da API rodar a
+# esteira de producao. Para separar em dois servicos (plano pago), remova
+# ENABLE_WORKER e adicione um service do tipo "worker" com
+# startCommand: node engine/worker.js
+#
+# ATENCAO no plano free:
+#  - O servico hiberna depois de 15 min sem trafego, e um servico hibernado nao
+#    processa a fila. Mantenha-o acordado com um ping gratuito no /health a cada
+#    10 min (cron-job.org ou UptimeRobot). O free da 750 h/mes, e um mes tem
+#    ~730 h, entao manter UM servico sempre ligado cabe na cota.
+#  - O disco e efemero: os MP4 sao perdidos em cada deploy/restart. O upload
+#    para as redes acontece no mesmo job, entao isso nao atrapalha a publicacao.
+#  - 512 MB de RAM. Renderize videos curtos (30-50 s), como o pipeline ja faz.
+
+services:
+  - type: web
+    name: hermes-engine
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    # ffmpeg-static e ffprobe-static baixam os binarios de Linux no install
+    buildCommand: npm install --prefix engine
+    startCommand: node engine/src/server.js
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ENABLE_WORKER
+        value: 'true'
+
+      # Escreve em /tmp porque o diretorio do projeto e somente-leitura em
+      # algumas plataformas e o disco do free e efemero de qualquer forma.
+      - key: OUTPUT_DIR
+        value: /tmp/hermes/output
+      - key: TEMP_DIR
+        value: /tmp/hermes/jobs
+
+      # 'engine' faz o proprio motor servir o MP4 por HTTPS para o Instagram.
+      # 'storage' usaria o Firebase Cloud Storage, que exige o plano Blaze.
+      - key: PUBLIC_VIDEO_STRATEGY
+        value: engine
+
+      # Preencha no painel do Render depois do primeiro deploy, com a URL real
+      # do servico (ex: https://hermes-engine.onrender.com)
+      - key: ENGINE_PUBLIC_URL
+        sync: false
+      # URL da dashboard na Vercel — o callback do OAuth volta para ca
+      - key: DASHBOARD_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # Opcional: aceita tambem os previews https://<prefixo>-*.vercel.app
+      - key: VERCEL_PREVIEW_PREFIX
+        sync: false
+
+      # E-mails (ou UIDs) do Firebase Auth autorizados a operar, separados por virgula
+      - key: ALLOWED_OPERATORS
+        sync: false
+
+      # Segredos — cadastre em Environment, nunca no repositorio
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        sync: false
+
+      # App padrao das redes (opcional — cada canal pode ter o seu proprio)
+      - key: YOUTUBE_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+      - key: TIKTOK_CLIENT_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
+      - key: INSTAGRAM_APP_ID
+        sync: false
+      - key: INSTAGRAM_APP_SECRET
+        sync: false

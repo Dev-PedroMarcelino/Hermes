@@ -1,8 +1,10 @@
 import express from 'express';
-import { config } from './config/env.js';
+import fs from 'fs-extra';
+import { config, isOriginAllowed } from './config/env.js';
 import { db } from './config/firebase.js';
 import { runPreflight } from './config/preflight.js';
-import { executeVideoPipeline, JOB_STATUS } from './services/pipelineOrchestrator.js';
+import { requireAuth } from './middleware/requireAuth.js';
+import { JOB_STATUS } from './services/pipelineOrchestrator.js';
 import { encryptCredential } from './services/vaultService.js';
 import {
   SUPPORTED_NETWORKS,
@@ -15,42 +17,29 @@ import {
   saveAppCredentials,
   getAppCredentialsStatus
 } from './services/oauthService.js';
+import { resolvePublicVideo } from './services/publicVideoService.js';
+import { startWorkerLoop, isWorkerRunning } from './worker/productionWorker.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 /**
- * CORS restricted to the configured dashboard origins. The previous `*` policy
- * let any website on the internet call this engine from a user's browser.
+ * CORS restricted to the configured dashboard origins. A `*` policy would let
+ * any website on the internet drive this engine from a logged-in user's browser.
  */
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && config.allowedOrigins.includes(origin)) {
+  if (isOriginAllowed(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Vary', 'Origin');
+    res.header('Access-Control-Allow-Credentials', 'true');
   }
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, x-api-key');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.header('Access-Control-Max-Age', '600');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
-
-/**
- * Shared-secret guard for every state-changing route. Without it, anyone who can
- * reach this port can spend the tenant's Gemini quota and publish to their
- * social accounts.
- */
-function requireApiKey(req, res, next) {
-  if (!config.engineApiKey) {
-    return res.status(500).json({
-      error: 'ENGINE_API_KEY não configurada no .env. O motor recusa requisições até que ela seja definida.'
-    });
-  }
-  if (req.headers['x-api-key'] !== config.engineApiKey) {
-    return res.status(401).json({ error: 'API key inválida ou ausente.' });
-  }
-  next();
-}
 
 // ---------------------------------------------------------------------------
 // Health
@@ -59,13 +48,43 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ONLINE',
     service: 'Hermes Content Engine',
+    // Whether the *default* app is configured. A channel with its own app can
+    // still connect a network that shows false here.
     networks: {
       youtube: Boolean(config.oauth.youtube.clientId && config.oauth.youtube.clientSecret),
       tiktok: Boolean(config.oauth.tiktok.clientKey && config.oauth.tiktok.clientSecret),
       instagram: Boolean(config.oauth.instagram.appId && config.oauth.instagram.appSecret)
     },
+    worker: { ativo: isWorkerRunning(), noMesmoProcesso: config.runWorkerInProcess },
+    operadoresConfigurados: config.allowedOperators.length,
+    estrategiaDeVideo: config.publicVideoStrategy,
     timestamp: new Date().toISOString()
   });
+});
+
+/**
+ * Serves a rendered video to the social platforms.
+ *
+ * Intentionally unauthenticated: Instagram's servers fetch this URL, and they
+ * carry no operator credentials. The unguessable, expiring per-job token in the
+ * path is what protects it.
+ */
+app.get('/public/videos/:jobId/:token', async (req, res) => {
+  const { jobId, token } = req.params;
+
+  try {
+    const result = await resolvePublicVideo({ jobId, token });
+    if (result.error) return res.status(result.status).json({ error: result.error });
+
+    const { size } = await fs.stat(result.filePath);
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', size);
+    // Meta issues ranged requests while probing the file
+    res.setHeader('Accept-Ranges', 'bytes');
+    fs.createReadStream(result.filePath).pipe(res);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -76,7 +95,7 @@ app.get('/health', (req, res) => {
  * Queues a video production job. The pipeline runs in the background; the
  * dashboard follows progress through the Firestore document in real time.
  */
-app.post('/api/jobs/trigger', requireApiKey, async (req, res) => {
+app.post('/api/jobs/trigger', requireAuth, async (req, res) => {
   const { tenantId, customTopic, customInstruction } = req.body;
   if (!tenantId) return res.status(400).json({ error: 'O campo tenantId é obrigatório.' });
 
@@ -99,11 +118,22 @@ app.post('/api/jobs/trigger', requireApiKey, async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    executeVideoPipeline({ tenantId, jobId, customTopic, customInstruction }).catch(err => {
-      console.error(`[Server] Job ${jobId} falhou:`, err.message);
-    });
+    // Only enqueue here. Running the pipeline inline as well would race the
+    // worker: both would try to claim the same QUEUED job and could render and
+    // publish it twice.
+    if (!isWorkerRunning()) {
+      console.warn(
+        `[Server] Job ${jobId} enfileirado, mas nenhum worker está ativo neste processo. ` +
+          'Rode "npm run worker" ou defina ENABLE_WORKER=true.'
+      );
+    }
 
-    res.status(202).json({ message: 'Job de produção enfileirado.', jobId, status: JOB_STATUS.QUEUED });
+    res.status(202).json({
+      message: 'Job de produção enfileirado.',
+      jobId,
+      status: JOB_STATUS.QUEUED,
+      workerAtivo: isWorkerRunning()
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -116,7 +146,7 @@ app.post('/api/jobs/trigger', requireApiKey, async (req, res) => {
 /**
  * Returns the provider consent URL for a tenant to open in the browser.
  */
-app.get('/api/oauth/:network/start', requireApiKey, async (req, res) => {
+app.get('/api/oauth/:network/start', requireAuth, async (req, res) => {
   const { network } = req.params;
   const { tenantId } = req.query;
 
@@ -141,7 +171,7 @@ app.get('/api/oauth/:network/start', requireApiKey, async (req, res) => {
  * charged per Google Cloud project, so channels sharing one app also share its
  * ~6 uploads/day.
  */
-app.get('/api/tenants/:tenantId/app-credentials', requireApiKey, async (req, res) => {
+app.get('/api/tenants/:tenantId/app-credentials', requireAuth, async (req, res) => {
   try {
     res.json(await getAppCredentialsStatus({ tenantId: req.params.tenantId }));
   } catch (error) {
@@ -149,7 +179,7 @@ app.get('/api/tenants/:tenantId/app-credentials', requireApiKey, async (req, res
   }
 });
 
-app.post('/api/tenants/:tenantId/app-credentials/:network', requireApiKey, async (req, res) => {
+app.post('/api/tenants/:tenantId/app-credentials/:network', requireAuth, async (req, res) => {
   const { tenantId, network } = req.params;
 
   if (!SUPPORTED_NETWORKS.includes(network)) {
@@ -206,7 +236,7 @@ app.get('/api/oauth/:network/callback', async (req, res) => {
     return redirectBack({ oauth: 'error', network, message: 'Callback sem code ou state.' });
   }
 
-  const stateEntry = consumeOAuthState(state);
+  const stateEntry = await consumeOAuthState(state);
   if (!stateEntry || stateEntry.network !== network) {
     return redirectBack({
       oauth: 'error',
@@ -234,7 +264,7 @@ app.get('/api/oauth/:network/callback', async (req, res) => {
 /**
  * Revokes a stored network connection for a tenant.
  */
-app.delete('/api/oauth/:network/connection', requireApiKey, async (req, res) => {
+app.delete('/api/oauth/:network/connection', requireAuth, async (req, res) => {
   const { network } = req.params;
   const { tenantId } = req.query;
   if (!tenantId) return res.status(400).json({ error: 'O parâmetro tenantId é obrigatório.' });
@@ -258,7 +288,7 @@ app.delete('/api/oauth/:network/connection', requireApiKey, async (req, res) => 
  * it was unauthenticated and would hand any caller the plaintext of any stored
  * secret. Decryption now happens only inside the pipeline, server-side.
  */
-app.post('/api/vault/credentials', requireApiKey, async (req, res) => {
+app.post('/api/vault/credentials', requireAuth, async (req, res) => {
   const { tenantId, geminiApiKey, pexelsApiKey } = req.body;
   if (!tenantId) return res.status(400).json({ error: 'O campo tenantId é obrigatório.' });
 
@@ -278,13 +308,28 @@ app.post('/api/vault/credentials', requireApiKey, async (req, res) => {
 // reachable for diagnostics.
 runPreflight({ throwOnSkew: false }).catch(err => console.warn(err.message));
 
-app.listen(config.port, () => {
+// Bind to 0.0.0.0 so container platforms can route traffic to the process
+app.listen(config.port, '0.0.0.0', async () => {
   console.log('=======================================================');
   console.log(`🚀 Hermes Core Engine na porta ${config.port}`);
   console.log(`   Health:   ${config.enginePublicUrl}/health`);
   console.log(`   OAuth cb: ${config.enginePublicUrl}/api/oauth/{network}/callback`);
-  if (!config.engineApiKey) {
-    console.warn('   ⚠️  ENGINE_API_KEY não definida — as rotas protegidas vão recusar tudo.');
+  console.log(`   Vídeo:    estratégia "${config.publicVideoStrategy}"`);
+
+  if (config.allowedOperators.length === 0) {
+    console.warn('   ⚠️  ALLOWED_OPERATORS vazio — as rotas autenticadas vão recusar tudo.');
   }
-  console.log('=======================================================');
+
+  if (config.runWorkerInProcess) {
+    console.log('   Worker:   ativo neste mesmo processo (ENABLE_WORKER=true)');
+    console.log('=======================================================');
+    try {
+      await startWorkerLoop();
+    } catch (err) {
+      console.error('[Server] Falha ao iniciar o worker:', err.message);
+    }
+  } else {
+    console.log('   Worker:   separado — rode "npm run worker"');
+    console.log('=======================================================');
+  }
 });
