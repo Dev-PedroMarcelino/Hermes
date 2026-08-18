@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import CriarVideoQuickModal from './CriarVideoQuickModal';
 import { 
   Video, Play, Pause, Youtube, Eye, Trash2, Layers, Cpu, CheckCircle2, 
-  Clock, Sparkles, Loader2, Share2, ExternalLink
+  Clock, Sparkles, Loader2, Share2, ExternalLink, Plus
 } from 'lucide-react';
 
 export default function MonitorProducao() {
@@ -15,6 +16,7 @@ export default function MonitorProducao() {
   const [playingAudio, setPlayingAudio] = useState(null);
   const [audioRef, setAudioRef] = useState(null);
   const [deletandoJobId, setDeletandoJobId] = useState(null);
+  const [showQuickModal, setShowQuickModal] = useState(false);
 
   // Escuta os Canais
   useEffect(() => {
@@ -37,7 +39,6 @@ export default function MonitorProducao() {
 
       setJobs(lista);
 
-      // Define o primeiro vídeo publicado como vídeo ativo do player se não houver um selecionado
       const publicado = lista.find(j => j.status === 'PUBLISHED' && (j.publishedVideoUrl || j.script?.titulo));
       if (publicado && !activeEmbedVideo) {
         setActiveEmbedVideo(publicado);
@@ -67,7 +68,6 @@ export default function MonitorProducao() {
     return () => unsubscribe();
   }, []);
 
-  // Filtra os jobs pelo canal selecionado
   const jobsFiltrados = selectedTenant === 'ALL' 
     ? jobs 
     : jobs.filter(j => j.tenantId === selectedTenant || j.id.includes(selectedTenant));
@@ -75,7 +75,6 @@ export default function MonitorProducao() {
   const videosPublicados = jobsFiltrados.filter(j => j.status === 'PUBLISHED');
   const videosEmProducao = jobsFiltrados.filter(j => j.status !== 'PUBLISHED');
 
-  // Calcula a porcentagem e fase da esteira de produção
   const getProgressStage = (status) => {
     switch (status) {
       case 'AUDIO_GEN':
@@ -117,21 +116,6 @@ export default function MonitorProducao() {
     }
   };
 
-  const toggleAudio = (audioUrl) => {
-    if (playingAudio === audioUrl) {
-      if (audioRef) audioRef.pause();
-      setPlayingAudio(null);
-    } else {
-      if (audioRef) audioRef.pause();
-      const newAudio = new Audio(audioUrl);
-      newAudio.play();
-      setAudioRef(newAudio);
-      setPlayingAudio(audioUrl);
-      newAudio.onended = () => setPlayingAudio(null);
-    }
-  };
-
-  // Extrai o ID do Vídeo do YouTube para o Embed
   const getYoutubeEmbedId = (job) => {
     if (job?.distributionLog?.youtube?.videoId) {
       return job.distributionLog.youtube.videoId;
@@ -146,7 +130,7 @@ export default function MonitorProducao() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
-      {/* Barra de Filtro de Canais Multi-Tenant */}
+      {/* Barra Superior com Filtro e Botão + Novo Vídeo Instantâneo */}
       <div className="glass-panel tech-card" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Layers className="text-accent" size={24} />
@@ -156,30 +140,41 @@ export default function MonitorProducao() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-            Filtrar por Canal:
-          </label>
-          <select
-            className="input-field"
-            style={{ width: '260px' }}
-            value={selectedTenant}
-            onChange={(e) => setSelectedTenant(e.target.value)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+              Canal:
+            </label>
+            <select
+              className="input-field"
+              style={{ width: '220px' }}
+              value={selectedTenant}
+              onChange={(e) => setSelectedTenant(e.target.value)}
+            >
+              <option value="ALL">🌐 Todos os Canais</option>
+              {canais.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name || c.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Botão + Novo Vídeo Instantâneo */}
+          <button
+            onClick={() => setShowQuickModal(true)}
+            className="gradient-btn"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '13px' }}
           >
-            <option value="ALL">🌐 Todos os Canais (Visão Global)</option>
-            {canais.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name || c.nome} ({c.niche || c.nicho})
-              </option>
-            ))}
-          </select>
+            <Plus size={18} /> Criar Novo Vídeo
+          </button>
         </div>
       </div>
 
-      {/* Grid Principal em 2 Colunas Lado a Lado */}
+      {/* Grid Principal em 2 Colunas */}
       <div className="grid-responsive-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
         
-        {/* COLUNA 1 (ESQUERDA): VÍDEOS CRIADOS & PLAYER DO YOUTUBE INCORPORADO */}
+        {/* COLUNA 1: VÍDEOS PUBLICADOS & PLAYER DO YOUTUBE */}
         <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
             <h4 style={{ fontSize: '16px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -188,7 +183,7 @@ export default function MonitorProducao() {
             <span className="badge badge-active">NO AR</span>
           </div>
 
-          {/* Player do YouTube Incorporado na Tela */}
+          {/* Player do YouTube Incorporado */}
           {activeEmbedVideo && (
             <div style={{ background: '#000', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
               {getYoutubeEmbedId(activeEmbedVideo) ? (
@@ -205,9 +200,6 @@ export default function MonitorProducao() {
                 <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   <Video size={40} style={{ margin: '0 auto 12px', opacity: 0.4, color: '#00ff87' }} />
                   <p style={{ fontSize: '14px', fontWeight: 600 }}>{activeEmbedVideo.script?.titulo}</p>
-                  <span style={{ fontSize: '12px', display: 'block', marginTop: '6px' }}>
-                    Vídeo salvo no banco. Clique no botão abaixo para abrir no YouTube.
-                  </span>
                 </div>
               )}
 
@@ -272,7 +264,7 @@ export default function MonitorProducao() {
           </div>
         </div>
 
-        {/* COLUNA 2 (DIREITA): VÍDEOS EM PRODUÇÃO / NA FILA COM BARRA DE ETAPAS E PORCENTAGEM */}
+        {/* COLUNA 2: VÍDEOS EM PRODUÇÃO / NA FILA COM BARRA DE PROGRESSO */}
         <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
             <h4 style={{ fontSize: '16px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -285,7 +277,7 @@ export default function MonitorProducao() {
             {videosEmProducao.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                 <Clock size={32} style={{ margin: '0 auto 10px', opacity: 0.4 }} />
-                Nenhum vídeo em fila no momento. Crie uma pauta manual para ver a esteira em ação!
+                Nenhum vídeo em fila no momento. Clique no botão <strong>+ Criar Novo Vídeo</strong> acima!
               </div>
             ) : (
               videosEmProducao.map((job) => {
@@ -323,18 +315,17 @@ export default function MonitorProducao() {
                       </button>
                     </div>
 
-                    {/* BARRA DE PROGRESSO EM TEMPO REAL COM PORCENTAGEM */}
+                    {/* BARRA DE PROGRESSO EM TEMPO REAL */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
                         <span style={{ color: '#00ff87', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Loader2 size={13} className="spin" style={{ animation: 'spin 2s linear infinite' }} /> {stage.label}
+                          <Loader2 size={13} style={{ animation: 'spin 2s linear infinite' }} /> {stage.label}
                         </span>
                         <span style={{ color: '#00ff87', fontWeight: 800, fontFamily: 'monospace' }}>
                           {stage.percent}%
                         </span>
                       </div>
 
-                      {/* Trilho da Barra */}
                       <div style={{
                         width: '100%',
                         height: '8px',
@@ -360,6 +351,13 @@ export default function MonitorProducao() {
         </div>
 
       </div>
+
+      {/* Modal de Criação Rápida de Vídeo + */}
+      {showQuickModal && (
+        <CriarVideoQuickModal
+          onClose={() => setShowQuickModal(false)}
+        />
+      )}
     </div>
   );
 }
