@@ -334,7 +334,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                 const audioUrl = job.assets?.audioUrl;
 
                 return (
-                  <div key={job.id} style={{
+                  <div className="grid-responsive-2" key={job.id} style={{
                     background: 'rgba(24, 28, 28, 0.6)',
                     border: '1px solid var(--border-color)',
                     borderRadius: '14px',
@@ -515,7 +515,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
 
           {/* ABA 3: MÉTRICAS */}
           {activeTab === 'metrics' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+            <div className="grid-responsive-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
               <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Visualizações Totais</span>
                 <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px' }} className="gradient-text">148.5K</h3>
@@ -551,7 +551,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="grid-responsive-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                     <Mic size={14} className="text-accent" /> Tom de Voz Neural (EdgeTTS)
