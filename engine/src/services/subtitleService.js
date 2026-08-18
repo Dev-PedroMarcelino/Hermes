@@ -1,40 +1,74 @@
 import fs from 'fs-extra';
 import path from 'path';
 
-/**
- * Formats seconds into ASS timestamp format: H:MM:SS.cs (e.g., 0:00:01.50)
- */
+/** Formats seconds as an ASS timestamp: H:MM:SS.cs */
 function formatAssTime(seconds) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  const cs = Math.floor((seconds % 1) * 100);
+  const safe = Math.max(0, seconds);
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = Math.floor(safe % 60);
+  const cs = Math.round((safe % 1) * 100);
 
-  const mStr = String(m).padStart(2, '0');
-  const sStr = String(s).padStart(2, '0');
-  const csStr = String(cs).padStart(2, '0');
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(Math.min(cs, 99)).padStart(2, '0')}`;
+}
 
-  return `${h}:${mStr}:${sStr}.${csStr}`;
+/** ASS uses `{` and `}` for override blocks, so literal braces must go. */
+function sanitize(text) {
+  return String(text).replace(/[{}]/g, '').replace(/\\/g, '/').trim();
 }
 
 /**
- * Generates an ASS subtitle file with animated active word highlights.
- * @param {Object} options
- * @param {Array<{text: string, durationEstSeconds: number}>} options.sections Script sections
- * @param {string} options.outputAssPath Output file path for .ass file
- * @param {Object} options.style Subtitle styling preferences
+ * Builds word timings. Prefers the real cues emitted by Edge TTS; falls back to
+ * distributing the measured narration length across words by count.
  */
-export async function generateAssSubtitles({ sections, outputAssPath, style = {} }) {
-  const dir = path.dirname(outputAssPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+function buildWordTimings({ cues, sections, totalDurationSeconds }) {
+  if (Array.isArray(cues) && cues.length > 0) {
+    return cues
+      .map(cue => ({
+        word: sanitize(cue.part),
+        start: cue.start / 1000,
+        end: cue.end / 1000
+      }))
+      .filter(w => w.word.length > 0);
   }
 
+  const words = sections
+    .flatMap(section => sanitize(section.text || '').split(/\s+/))
+    .filter(Boolean);
+
+  if (words.length === 0) return [];
+
+  const total = totalDurationSeconds || words.length * 0.4;
+  const perWord = total / words.length;
+
+  return words.map((word, index) => ({
+    word,
+    start: index * perWord,
+    end: (index + 1) * perWord
+  }));
+}
+
+/**
+ * Generates an .ass subtitle file with karaoke-style word highlighting, sized
+ * for a 1080x1920 vertical short.
+ */
+export async function generateAssSubtitles({
+  sections = [],
+  cues = [],
+  outputAssPath,
+  totalDurationSeconds = null,
+  style = {}
+}) {
+  await fs.ensureDir(path.dirname(outputAssPath));
+
   const fontName = style.fontName || 'Arial';
-  const fontSize = style.fontSize || 22;
-  const primaryColor = style.primaryColor || '&H00FFFFFF'; // White
-  const highlightColor = style.highlightColor || '&H0000FFFF'; // Yellow
-  const outlineColor = style.outlineColor || '&H00000000'; // Black outline
+  // Font size is in PlayRes units (1080x1920), so ~96 is a readable phone caption
+  const fontSize = style.fontSize || 96;
+  const primaryColor = style.primaryColor || '&H00FFFFFF'; // white
+  const highlightColor = style.highlightColor || '&H0000FFFF'; // yellow
+  const outlineColor = style.outlineColor || '&H00000000'; // black
+  const marginV = style.marginV || 420;
+  const wordsPerScreen = style.wordsPerScreen || 3;
 
   let assContent = `[Script Info]
 Title: Hermes Dynamic Subtitles
@@ -46,46 +80,39 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${fontName},${fontSize},${primaryColor},${highlightColor},${outlineColor},&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,40,40,280,1
-Style: ActiveWord,${fontName},${fontSize},${highlightColor},${primaryColor},${outlineColor},&H80000000,-1,0,0,0,110,110,0,0,1,5,3,2,40,40,280,1
+Style: Default,${fontName},${fontSize},${primaryColor},${highlightColor},${outlineColor},&H80000000,-1,0,0,0,100,100,0,0,1,6,3,2,60,60,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  let currentTime = 0.5; // Start offset
+  const timings = buildWordTimings({ cues, sections, totalDurationSeconds });
 
-  for (const section of sections) {
-    const text = section.text.trim();
-    const words = text.split(/\s+/);
-    const duration = section.durationEstSeconds || Math.max(2, words.length * 0.4);
-    const timePerWord = duration / words.length;
+  // Group words into small screens, then emit one line per word so the active
+  // word can be highlighted while its neighbours stay visible for context.
+  for (let i = 0; i < timings.length; i += wordsPerScreen) {
+    const group = timings.slice(i, i + wordsPerScreen);
 
-    // Split words into small display chunks (3-5 words per screen for short-form retention)
-    const chunkSize = 4;
-    for (let i = 0; i < words.length; i += chunkSize) {
-      const chunkWords = words.slice(i, i + chunkSize);
-      const chunkStartTime = currentTime + i * timePerWord;
-      const chunkEndTime = chunkStartTime + chunkWords.length * timePerWord;
+    group.forEach((active, indexInGroup) => {
+      const line = group
+        .map((entry, idx) =>
+          idx === indexInGroup
+            ? `{\\c${highlightColor}\\fscx112\\fscy112}${entry.word.toUpperCase()}{\\r}`
+            : entry.word.toUpperCase()
+        )
+        .join(' ');
 
-      // Render line with active highlight
-      for (let j = 0; j < chunkWords.length; j++) {
-        const wordStart = chunkStartTime + j * timePerWord;
-        const wordEnd = wordStart + timePerWord;
+      // Bridge the silence between words so captions never flicker off mid-phrase
+      const nextStart = group[indexInGroup + 1]?.start ?? active.end;
+      const end = Math.max(active.end, nextStart);
 
-        // Build string where active word has highlight styling
-        const formattedLine = chunkWords.map((w, idx) => {
-          if (idx === j) {
-            return `{\\c${highlightColor}\\fscx115\\fscy115}${w.toUpperCase()}{\\r}`;
-          }
-          return `{\\c${primaryColor}}${w.toUpperCase()}`;
-        }).join(' ');
+      assContent += `Dialogue: 0,${formatAssTime(active.start)},${formatAssTime(end)},Default,,0,0,0,,${line}\n`;
+    });
+  }
 
-        assContent += `Dialogue: 0,${formatAssTime(wordStart)},${formatAssTime(wordEnd)},Default,,0,0,0,,${formattedLine}\n`;
-      }
-    }
-
-    currentTime += duration;
+  // An [Events] block with no dialogue makes the ass filter fail
+  if (!assContent.includes('Dialogue:')) {
+    assContent += 'Dialogue: 0,0:00:00.00,0:00:03.00,Default,,0,0,0,,\n';
   }
 
   await fs.writeFile(outputAssPath, assContent, 'utf8');

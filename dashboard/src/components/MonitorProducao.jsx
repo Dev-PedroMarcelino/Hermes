@@ -2,10 +2,19 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import CriarVideoQuickModal from './CriarVideoQuickModal';
-import { 
-  Video, Play, Pause, Youtube, Eye, Trash2, Layers, Cpu, CheckCircle2, 
-  Clock, Sparkles, Loader2, Share2, ExternalLink, Plus, Zap, RefreshCw
+import { getProgressStage, isFailed } from '../lib/jobStatus';
+import {
+  Video, Play, Pause, Youtube, Eye, Trash2, Layers, Cpu, CheckCircle2,
+  Clock, Sparkles, Loader2, Share2, ExternalLink, Plus, Zap, RefreshCw, AlertCircle
 } from 'lucide-react';
+
+/**
+ * The engine's Gemini stage emits `title`; older documents used `titulo`.
+ * Read both so the monitor works across the two generations of job records.
+ */
+function tituloDoJob(job) {
+  return job?.script?.title || job?.script?.titulo || null;
+}
 
 export default function MonitorProducao() {
   const [canais, setCanais] = useState([]);
@@ -16,8 +25,8 @@ export default function MonitorProducao() {
   const [playingAudio, setPlayingAudio] = useState(null);
   const [audioRef, setAudioRef] = useState(null);
   const [deletandoJobId, setDeletandoJobId] = useState(null);
-  const [processandoJobId, setProcessandoJobId] = useState(null);
   const [showQuickModal, setShowQuickModal] = useState(false);
+  const [erroFirestore, setErroFirestore] = useState(null);
 
   // Escuta os Canais
   useEffect(() => {
@@ -40,29 +49,20 @@ export default function MonitorProducao() {
 
       setJobs(lista);
 
-      const publicado = lista.find(j => j.status === 'PUBLISHED' && (j.publishedVideoUrl || j.script?.titulo));
+      const publicado = lista.find(j => j.status === 'PUBLISHED' && (j.publishedVideoUrl || tituloDoJob(j)));
       if (publicado && !activeEmbedVideo) {
         setActiveEmbedVideo(publicado);
       }
 
+      setErroFirestore(null);
       setLoading(false);
     }, (error) => {
-      console.warn('Firestore onSnapshot fallback:', error.message);
-      const mockJob = {
-        id: 'job_1787014138780',
-        tenantId: 'tenant_test_1787011929715',
-        status: 'PUBLISHED',
-        script: {
-          titulo: 'O supercomputador que prevê o futuro climático #Shorts',
-          roteiro_locucao: 'Você sabia que existem sistemas de inteligência artificial desenvolvidos para operar sem supervisão humana? O futuro já começou.',
-          tags: ['#ia', '#futuro']
-        },
-        distributionLog: { youtube: { videoId: 'dQw4w9WgXcQ' } },
-        publishedVideoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-        createdAt: new Date().toISOString()
-      };
-      setJobs([mockJob]);
-      setActiveEmbedVideo(mockJob);
+      // A Firestore failure used to substitute a fake "published" job here,
+      // which made a broken connection look like a working pipeline. Surface
+      // the real error instead.
+      console.error('Erro no listener do Firestore:', error.message);
+      setErroFirestore(error.message);
+      setJobs([]);
       setLoading(false);
     });
 
@@ -76,55 +76,12 @@ export default function MonitorProducao() {
   const videosPublicados = jobsFiltrados.filter(j => j.status === 'PUBLISHED');
   const videosEmProducao = jobsFiltrados.filter(j => j.status !== 'PUBLISHED');
 
-  const getProgressStage = (status) => {
-    switch (status) {
-      case 'AUDIO_GEN':
-        return { percent: 25, label: '1/4 - Roteiro Gemini Concluído (Gerando Voz Neural EdgeTTS)', step: 1 };
-      case 'VIDEO_RENDER':
-        return { percent: 50, label: '2/4 - Renderizando Vídeo Vertical e Legendas (FFmpeg)', step: 2 };
-      case 'READY_TO_UPLOAD':
-      case 'UPLOADING':
-        return { percent: 75, label: '3/4 - Vídeo Renderizado (Realizando Upload YouTube API)', step: 3 };
-      case 'PUBLISHED':
-        return { percent: 100, label: '4/4 - Publicado no YouTube Shorts!', step: 4 };
-      default:
-        return { percent: 15, label: 'Iniciando Processamento da IA...', step: 1 };
-    }
-  };
-
-  // Avança manualmente as fases da esteira a partir da Dashboard
-  const handleAvancarEsteira = async (job) => {
-    setProcessandoJobId(job.id);
-    try {
-      if (!db) return;
-
-      let proximoStatus = 'VIDEO_RENDER';
-      let extraData = {};
-
-      if (job.status === 'AUDIO_GEN') {
-        proximoStatus = 'VIDEO_RENDER';
-      } else if (job.status === 'VIDEO_RENDER') {
-        proximoStatus = 'READY_TO_UPLOAD';
-      } else if (job.status === 'READY_TO_UPLOAD' || job.status === 'UPLOADING') {
-        proximoStatus = 'PUBLISHED';
-        const queryTitle = encodeURIComponent(job.script?.titulo || 'Shorts IA');
-        extraData = {
-          publishedVideoUrl: `https://www.youtube.com/results?search_query=${queryTitle}`,
-          distributionLog: { youtube: { videoId: 'dQw4w9WgXcQ', publishedAt: new Date().toISOString() } }
-        };
-      }
-
-      await updateDoc(doc(db, 'video_jobs', job.id), {
-        status: proximoStatus,
-        ...extraData,
-        updatedAt: new Date().toISOString()
-      });
-    } catch (err) {
-      console.warn('Erro ao avançar esteira:', err.message);
-    } finally {
-      setProcessandoJobId(null);
-    }
-  };
+  // Progress mapping lives in ../lib/jobStatus.js so it stays in sync with the
+  // engine's JOB_STATUS ladder.
+  //
+  // The old "Avançar Fase" button that used to sit here wrote statuses straight
+  // into Firestore — including a hardcoded YouTube ID — which faked progress
+  // without producing anything. Phases are now driven solely by the worker.
 
   const handleDeletarVideo = async (e, jobId) => {
     if (e) e.stopPropagation();
@@ -164,7 +121,22 @@ export default function MonitorProducao() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      
+
+      {erroFirestore && (
+        <div className="glass-panel" style={{
+          padding: '16px 20px', border: '1px solid rgba(255, 71, 87, 0.35)',
+          display: 'flex', gap: '12px', alignItems: 'flex-start'
+        }}>
+          <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
+          <div style={{ fontSize: '13px', lineHeight: 1.6 }}>
+            <strong>Não foi possível ler a esteira no Firestore.</strong>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginTop: '4px' }}>
+              {erroFirestore}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barra Superior com Filtro e Botão + Novo Vídeo Instantâneo */}
       <div className="glass-panel tech-card" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -233,13 +205,13 @@ export default function MonitorProducao() {
               ) : (
                 <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                   <Video size={40} style={{ margin: '0 auto 12px', opacity: 0.4, color: '#00ff87' }} />
-                  <p style={{ fontSize: '14px', fontWeight: 600 }}>{activeEmbedVideo.script?.titulo}</p>
+                  <p style={{ fontSize: '14px', fontWeight: 600 }}>{tituloDoJob(activeEmbedVideo)}</p>
                 </div>
               )}
 
               <div style={{ padding: '16px', background: 'rgba(11, 16, 21, 0.95)', borderTop: '1px solid var(--border-color)' }}>
                 <h5 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '6px' }}>
-                  {activeEmbedVideo.script?.titulo || 'Vídeo Publicado'}
+                  {tituloDoJob(activeEmbedVideo) || 'Vídeo Publicado'}
                 </h5>
                 <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
                   "{activeEmbedVideo.script?.roteiro_locucao || 'Roteiro gerado pela IA'}"
@@ -273,7 +245,7 @@ export default function MonitorProducao() {
                 >
                   <div style={{ maxWidth: '75%' }}>
                     <h5 style={{ fontSize: '14px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {job.script?.titulo || 'Vídeo sem título'}
+                      {tituloDoJob(job) || 'Vídeo sem título'}
                     </h5>
                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
                       {job.createdAt ? new Date(job.createdAt).toLocaleTimeString() : 'Publicado'}
@@ -316,6 +288,7 @@ export default function MonitorProducao() {
             ) : (
               videosEmProducao.map((job) => {
                 const stage = getProgressStage(job.status);
+                const falhou = isFailed(job.status);
 
                 return (
                   <div
@@ -336,38 +309,35 @@ export default function MonitorProducao() {
                           ID: {job.id}
                         </span>
                         <h5 style={{ fontSize: '15px', fontWeight: 700, marginTop: '2px' }}>
-                          {job.script?.titulo || 'Processando Roteiro Gemini...'}
+                          {tituloDoJob(job) || 'Processando Roteiro Gemini...'}
                         </h5>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <button
-                          onClick={() => handleAvancarEsteira(job)}
-                          className="btn-secondary"
-                          disabled={processandoJobId === job.id}
-                          style={{ padding: '4px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                          title="Avançar para a próxima fase da esteira"
-                        >
-                          <Zap size={12} className="text-accent" /> {processandoJobId === job.id ? 'Processando...' : 'Avançar Fase'}
-                        </button>
-
-                        <button
-                          onClick={(e) => handleDeletarVideo(e, job.id)}
-                          className="btn-danger"
-                          style={{ padding: '4px 8px', borderRadius: '6px' }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
+                      <button
+                        onClick={(e) => handleDeletarVideo(e, job.id)}
+                        className="btn-danger"
+                        style={{ padding: '4px 8px', borderRadius: '6px' }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
 
                     {/* BARRA DE PROGRESSO EM TEMPO REAL */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
-                        <span style={{ color: '#00ff87', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Loader2 size={13} style={{ animation: 'spin 2s linear infinite' }} /> {stage.label}
+                        <span style={{
+                          color: falhou ? '#ff4757' : '#00ff87',
+                          fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px'
+                        }}>
+                          {falhou
+                            ? <AlertCircle size={13} />
+                            : <Loader2 size={13} style={{ animation: 'spin 2s linear infinite' }} />}
+                          {falhou ? 'Falhou' : stage.label}
                         </span>
-                        <span style={{ color: '#00ff87', fontWeight: 800, fontFamily: 'monospace' }}>
+                        <span style={{
+                          color: falhou ? '#ff4757' : '#00ff87',
+                          fontWeight: 800, fontFamily: 'monospace'
+                        }}>
                           {stage.percent}%
                         </span>
                       </div>
@@ -382,12 +352,22 @@ export default function MonitorProducao() {
                         <div style={{
                           width: `${stage.percent}%`,
                           height: '100%',
-                          background: 'linear-gradient(90deg, #00ff87, #60efff)',
+                          background: falhou
+                            ? 'linear-gradient(90deg, #ff4757, #ff6b81)'
+                            : 'linear-gradient(90deg, #00ff87, #60efff)',
                           borderRadius: '10px',
-                          boxShadow: '0 0 12px rgba(0, 255, 135, 0.6)',
+                          boxShadow: falhou
+                            ? '0 0 12px rgba(255, 71, 87, 0.6)'
+                            : '0 0 12px rgba(0, 255, 135, 0.6)',
                           transition: 'width 0.4s ease'
                         }} />
                       </div>
+
+                      {falhou && job.errorMessage && (
+                        <span style={{ fontSize: '11px', color: '#ff9aa5', lineHeight: 1.5, marginTop: '2px' }}>
+                          {job.errorMessage}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

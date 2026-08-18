@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import OAuthConnectionModal from './OAuthConnectionModal';
+import AppCredentialsPanel from './AppCredentialsPanel';
 import { 
   X, Video, BarChart3, Bot, ExternalLink, Play, Pause, 
   CheckCircle2, Sparkles, Youtube, Tag, Mic, Trash2, Share2, Link2
@@ -430,7 +431,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
               <div>
                 <h3 style={{ fontSize: '17px', fontWeight: 800, marginBottom: '6px' }}>Conexões de Rede (OAuth Multi-Tenant)</h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  Clique no botão para abrir a tela oficial de login do Google/YouTube e autorizar o envio automático para o canal.
+                  Clique no botão para abrir a tela oficial de login da plataforma e autorizar o envio automático para este canal.
                 </p>
               </div>
 
@@ -503,6 +504,11 @@ export default function ChannelDetailModal({ channel, onClose }) {
                     {conexoes.instagram?.status === 'CONNECTED' ? 'Reconectar Instagram' : 'Conectar Instagram Graph'}
                   </button>
                 </div>
+              </div>
+
+              {/* Credenciais de aplicativo por canal (isola a cota de API) */}
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px', marginTop: '4px' }}>
+                <AppCredentialsPanel tenantId={channel.id} />
               </div>
             </div>
           )}
@@ -597,7 +603,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
       {/* Modal de Conexão OAuth Real */}
       {showOAuthModal && (
         <OAuthConnectionModal
-          channel={channel}
+          channel={{ ...channel, conexoes }}
           rede={connectingRede}
           onClose={() => setShowOAuthModal(false)}
           onConnected={handleConexaoSalva}

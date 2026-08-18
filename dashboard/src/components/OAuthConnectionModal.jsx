@@ -1,238 +1,238 @@
-import { useState } from 'react';
-import { db } from '../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
-import { X, Youtube, ExternalLink, CheckCircle2, Shield, Key, AlertCircle, Copy } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Youtube, ExternalLink, CheckCircle2, AlertCircle, Loader2, Music2, Instagram, Unlink } from 'lucide-react';
+import { startOAuthConnection, disconnectNetwork, getEngineHealth } from '../lib/engineApi';
 
+const NETWORK_META = {
+  youtube: {
+    label: 'YouTube Shorts',
+    Icon: Youtube,
+    color: '#ff0000',
+    requirements: [
+      'Projeto no Google Cloud com a YouTube Data API v3 ativada.',
+      'Tela de permissão OAuth configurada como "Externo" e seu e-mail em "Usuários de teste".',
+      'Enquanto o app não passar pela verificação do Google, os vídeos sobem como PRIVADOS.',
+      'Cota padrão: 10.000 unidades/dia e cada upload custa 1.600 (~6 vídeos por dia).'
+    ]
+  },
+  tiktok: {
+    label: 'TikTok',
+    Icon: Music2,
+    color: '#00f2ea',
+    requirements: [
+      'App aprovado no TikTok for Developers com o escopo video.publish.',
+      'Sem a auditoria de conteúdo do TikTok, os posts só saem como privados (SELF_ONLY).',
+      'O Hermes envia o arquivo por FILE_UPLOAD, então não é preciso verificar domínio.'
+    ]
+  },
+  instagram: {
+    label: 'Instagram Reels',
+    Icon: Instagram,
+    color: '#e1306c',
+    requirements: [
+      'Conta do Instagram do tipo Business ou Creator (conta pessoal não publica via API).',
+      'A conta precisa estar vinculada a uma Página do Facebook.',
+      'App na Meta for Developers com a permissão instagram_content_publish aprovada.',
+      'Limite da plataforma: 25 publicações por 24 horas.'
+    ]
+  }
+};
+
+/**
+ * Runs the real OAuth handshake through the engine.
+ *
+ * The previous version asked the user to paste an authorization code and saved
+ * that raw code to Firestore as if it were a connection. An auth code is
+ * single-use and expires within minutes, so nothing could ever be published
+ * with it. Now the engine performs the code -> token exchange server-side and
+ * stores the tokens encrypted.
+ */
 export default function OAuthConnectionModal({ channel, rede = 'youtube', onClose, onConnected }) {
-  const [clientId, setClientId] = useState(import.meta.env.VITE_YOUTUBE_CLIENT_ID || '');
-  const [redirectUriOption, setRedirectUriOption] = useState('playground'); // 'playground' | 'vercel' | 'custom'
-  const [customRedirectUri, setCustomRedirectUri] = useState(typeof window !== 'undefined' ? `${window.location.origin}` : 'http://localhost:5173');
-  const [authCode, setAuthCode] = useState('');
-  const [salvando, setSalvando] = useState(false);
-  const [sucesso, setSucesso] = useState(false);
-  const [copiado, setCopiado] = useState(false);
+  const [status, setStatus] = useState('idle'); // idle | starting | waiting | success | error
+  const [errorMessage, setErrorMessage] = useState('');
+  const [engineReady, setEngineReady] = useState(null);
 
-  const getEffectiveRedirectUri = () => {
-    if (redirectUriOption === 'playground') return 'https://developers.google.com/oauthplayground';
-    if (redirectUriOption === 'vercel') return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
-    return customRedirectUri.trim();
-  };
+  const meta = NETWORK_META[rede] || NETWORK_META.youtube;
+  const { Icon } = meta;
+  const connectionInfo = channel.conexoes?.[rede];
+  const isConnected = connectionInfo?.status === 'CONNECTED';
 
-  const effectiveRedirectUri = getEffectiveRedirectUri();
-  const scope = encodeURIComponent('https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly');
+  // Check whether the engine has credentials configured for this network
+  useEffect(() => {
+    let cancelled = false;
+    getEngineHealth()
+      .then(health => {
+        if (!cancelled) setEngineReady(Boolean(health.networks?.[rede]));
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setEngineReady(false);
+          setErrorMessage(err.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rede]);
 
-  const getGoogleAuthUrl = () => {
-    const finalClientId = clientId.trim() || 'SEU_CLIENT_ID_REAL.apps.googleusercontent.com';
-    return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(finalClientId)}&redirect_uri=${encodeURIComponent(effectiveRedirectUri)}&response_type=code&scope=${scope}&access_type=offline&prompt=consent&state=${channel.id}`;
-  };
+  // The engine's callback redirects the browser back to the dashboard with
+  // ?oauth=success|error, so read that on mount.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get('oauth');
+    if (!outcome || params.get('network') !== rede) return;
 
-  const abrirJanelaLoginGoogle = () => {
-    if (!clientId.trim()) {
-      alert('Por favor, digite o seu Client ID do Google Cloud Console.');
-      return;
+    if (outcome === 'success') {
+      setStatus('success');
+      if (onConnected) onConnected(rede, { status: 'CONNECTED', accountName: params.get('account') });
+    } else {
+      setStatus('error');
+      setErrorMessage(params.get('message') || 'A autorização falhou.');
     }
-    window.open(getGoogleAuthUrl(), '_blank', 'width=650,height=750');
-  };
+    window.history.replaceState({}, '', window.location.pathname);
+  }, [rede, onConnected]);
 
-  const copiarUri = () => {
-    navigator.clipboard.writeText(effectiveRedirectUri);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 2500);
-  };
-
-  const handleConfirmarConexao = async (e) => {
-    e.preventDefault();
-    setSalvando(true);
+  const handleConnect = async () => {
+    setStatus('starting');
+    setErrorMessage('');
 
     try {
-      if (db && channel.id) {
-        const dadosConexao = {
-          status: 'CONNECTED',
-          clientId: clientId.trim(),
-          redirectUri: effectiveRedirectUri,
-          authCode: authCode.trim() || 'oauth_code_confirmado',
-          connectedAt: new Date().toISOString(),
-          accountName: `Canal YouTube (${channel.name || channel.nome})`
-        };
-
-        await updateDoc(doc(db, 'tenants', channel.id), {
-          [`conexoes.${rede}`]: dadosConexao
-        });
-
-        if (onConnected) onConnected(rede, dadosConexao);
-      }
-
-      setSucesso(true);
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      const { authUrl } = await startOAuthConnection({ network: rede, tenantId: channel.id });
+      setStatus('waiting');
+      window.open(authUrl, '_blank', 'width=680,height=780');
     } catch (err) {
-      alert(`Erro ao salvar conexão: ${err.message}`);
-    } finally {
-      setSalvando(false);
+      setStatus('error');
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!window.confirm(`Desconectar ${meta.label} deste canal?`)) return;
+    setStatus('starting');
+    try {
+      await disconnectNetwork({ network: rede, tenantId: channel.id });
+      if (onConnected) onConnected(rede, { status: 'DISCONNECTED' });
+      setStatus('idle');
+    } catch (err) {
+      setStatus('error');
+      setErrorMessage(err.message);
     }
   };
 
   return (
     <div style={{
-      position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(5, 8, 16, 0.92)',
-      backdropFilter: 'blur(14px)',
-      zIndex: 1100,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px'
+      position: 'fixed', inset: 0,
+      background: 'rgba(5, 8, 16, 0.92)', backdropFilter: 'blur(14px)',
+      zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
     }}>
       <div className="glass-panel" style={{
-        width: '100%',
-        maxWidth: '680px',
-        maxHeight: '94vh',
-        overflowY: 'auto',
-        padding: '28px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '20px',
-        border: '1px solid rgba(0, 255, 135, 0.3)',
-        boxShadow: '0 20px 60px rgba(0, 255, 135, 0.2)'
+        width: '100%', maxWidth: '640px', maxHeight: '94vh', overflowY: 'auto',
+        padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px',
+        border: '1px solid rgba(0, 255, 135, 0.3)', boxShadow: '0 20px 60px rgba(0, 255, 135, 0.2)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Youtube size={26} style={{ color: '#ff0000' }} />
+            <Icon size={26} style={{ color: meta.color }} />
             <div>
-              <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Conectar YouTube OAuth2</h3>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Canal: {channel.name || channel.nome}</span>
+              <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Conectar {meta.label}</h3>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Canal: {channel.name || channel.nome}
+              </span>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid var(--border-color)',
-              color: '#fff',
-              width: '32px',
-              height: '32px',
-              borderRadius: '8px',
-              cursor: 'pointer'
-            }}
-          >
+          <button onClick={onClose} style={{
+            background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)',
+            color: '#fff', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer'
+          }}>
             <X size={18} />
           </button>
         </div>
 
-        {/* Instrução para o Erro 403: org_internal */}
-        <div style={{ background: 'rgba(255, 71, 87, 0.08)', border: '1px solid rgba(255, 71, 87, 0.3)', padding: '14px', borderRadius: '12px', display: 'flex', gap: '10px' }}>
-          <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
-          <div style={{ fontSize: '12px', color: '#e5e5e5', lineHeight: '1.5' }}>
-            <strong>Como resolver o "Erro 403: org_internal":</strong><br />
-            No Google Cloud Console em <strong>Tela de permissão OAuth</strong>, altere o Tipo de Usuário para <strong>Externo (External)</strong> e adicione o seu e-mail em <strong>Usuários de Teste</strong>.
+        {isConnected && status !== 'success' && (
+          <div style={{
+            background: 'rgba(0, 255, 135, 0.08)', border: '1px solid rgba(0, 255, 135, 0.3)',
+            padding: '14px', borderRadius: '12px', display: 'flex', gap: '10px', alignItems: 'center'
+          }}>
+            <CheckCircle2 size={20} style={{ color: '#00ff87', flexShrink: 0 }} />
+            <div style={{ fontSize: '13px', flex: 1 }}>
+              <strong>Conectado</strong>
+              {connectionInfo.accountName && <> — {connectionInfo.accountName}</>}
+              {connectionInfo.expiresAt && (
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  Token válido até {new Date(connectionInfo.expiresAt).toLocaleString('pt-BR')}
+                </div>
+              )}
+            </div>
+            <button onClick={handleDisconnect} className="btn-secondary"
+              style={{ fontSize: '12px', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Unlink size={13} /> Desconectar
+            </button>
           </div>
-        </div>
+        )}
 
-        <form onSubmit={handleConfirmarConexao} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {/* Passo 1: Client ID */}
-          <div>
-            <label style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <Key size={14} className="text-accent" /> 1. Seu Client ID do Google Cloud Console
-            </label>
-            <input
-              type="text"
-              className="input-field"
-              placeholder="Ex: 123456789-abcdefg.apps.googleusercontent.com"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              required
-            />
-          </div>
-
-          {/* Passo 2: Seleção da URI */}
-          <div>
-            <label style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <Shield size={14} className="text-accent" /> 2. Escolha a URI de Redirecionamento (Redirect URI)
-            </label>
-            <select
-              className="input-field"
-              value={redirectUriOption}
-              onChange={(e) => setRedirectUriOption(e.target.value)}
-            >
-              <option value="playground">Google OAuth Playground (Recomendado - https://developers.google.com/oauthplayground)</option>
-              <option value="vercel">URL Atual da Dashboard ({typeof window !== 'undefined' ? window.location.origin : 'https://hermes-lake-phi.vercel.app'})</option>
-              <option value="custom">URL Personalizada / Localhost</option>
-            </select>
-
-            {redirectUriOption === 'custom' && (
-              <input
-                type="text"
-                className="input-field"
-                style={{ marginTop: '8px' }}
-                placeholder="Ex: http://localhost:5173"
-                value={customRedirectUri}
-                onChange={(e) => setCustomRedirectUri(e.target.value)}
-              />
-            )}
-
-            <div style={{ marginTop: '8px', background: 'rgba(0,0,0,0.4)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', color: '#00ff87', fontFamily: 'monospace' }}>
-                {effectiveRedirectUri}
-              </span>
-              <button
-                type="button"
-                onClick={copiarUri}
-                className="btn-secondary"
-                style={{ fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
-              >
-                <Copy size={12} /> {copiado ? 'Copiado!' : 'Copiar URI'}
-              </button>
+        {engineReady === false && (
+          <div style={{
+            background: 'rgba(255, 71, 87, 0.08)', border: '1px solid rgba(255, 71, 87, 0.3)',
+            padding: '14px', borderRadius: '12px', display: 'flex', gap: '10px'
+          }}>
+            <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '12px', color: '#e5e5e5', lineHeight: 1.5 }}>
+              <strong>O motor não tem credenciais de {meta.label} configuradas.</strong><br />
+              Preencha as variáveis correspondentes no <code>.env</code> e reinicie o motor.
             </div>
           </div>
+        )}
 
-          {/* Passo 3: Fazer Login */}
-          <div style={{ background: 'rgba(0, 255, 135, 0.04)', border: '1px solid rgba(0, 255, 135, 0.2)', padding: '16px', borderRadius: '12px' }}>
-            <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '6px', color: '#00ff87' }}>
-              3. Abrir Tela de Login do Google
-            </h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: '1.5' }}>
-              Após configurar o app para "Externo" no Google Console, clique abaixo para logar com seu e-mail.
-            </p>
+        <div style={{
+          background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)',
+          padding: '16px', borderRadius: '12px'
+        }}>
+          <h4 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>
+            Pré-requisitos da plataforma
+          </h4>
+          <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+            {meta.requirements.map(item => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
 
-            <button
-              type="button"
-              onClick={abrirJanelaLoginGoogle}
-              className="gradient-btn"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}
-            >
-              <ExternalLink size={16} /> Abrir Login do Google OAuth2
-            </button>
+        {status === 'error' && (
+          <div style={{
+            background: 'rgba(255, 71, 87, 0.08)', border: '1px solid rgba(255, 71, 87, 0.3)',
+            padding: '14px', borderRadius: '12px', display: 'flex', gap: '10px'
+          }}>
+            <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '12px', lineHeight: 1.5 }}>{errorMessage}</div>
           </div>
+        )}
 
-          {/* Passo 4: Código de Autorização */}
-          <div>
-            <label style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <Key size={14} className="text-accent" /> 4. Cole o Código de Autorização (Code)
-            </label>
-            <input
-              type="text"
-              className="input-field"
-              placeholder="Cole aqui o código gerado (Ex: 4/0AVG7...)"
-              value={authCode}
-              onChange={(e) => setAuthCode(e.target.value)}
-              required
-            />
+        {status === 'success' && (
+          <div style={{
+            background: 'rgba(0, 255, 135, 0.08)', border: '1px solid rgba(0, 255, 135, 0.3)',
+            padding: '14px', borderRadius: '12px', display: 'flex', gap: '10px', alignItems: 'center'
+          }}>
+            <CheckCircle2 size={20} style={{ color: '#00ff87', flexShrink: 0 }} />
+            <div style={{ fontSize: '13px' }}>
+              <strong>Conta conectada!</strong> Os tokens foram salvos criptografados no cofre do canal.
+            </div>
           </div>
+        )}
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-            <button type="submit" className="gradient-btn" disabled={salvando}>
-              {salvando ? 'Salvando no Firestore...' : 'Confirmar & Salvar Conexão do Canal'}
-            </button>
-
-            {sucesso && (
-              <span style={{ color: '#00ff87', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle2 size={16} /> Canal Conectado!
-              </span>
-            )}
+        {status === 'waiting' && (
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Loader2 size={14} className="text-accent" style={{ animation: 'spin 1s linear infinite' }} />
+            Concluindo a autorização na janela do navegador. Ao terminar, você volta para cá automaticamente.
           </div>
-        </form>
+        )}
+
+        <button
+          onClick={handleConnect}
+          className="gradient-btn"
+          disabled={status === 'starting' || engineReady === false}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '14px' }}
+        >
+          {status === 'starting'
+            ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Preparando...</>
+            : <><ExternalLink size={16} /> {isConnected ? `Reconectar ${meta.label}` : `Autorizar ${meta.label}`}</>}
+        </button>
       </div>
     </div>
   );

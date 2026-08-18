@@ -2,28 +2,76 @@ import path from 'path';
 import fs from 'fs-extra';
 import { db } from '../config/firebase.js';
 import { config } from '../config/env.js';
-import { decryptCredential } from './vaultService.js';
+import { decryptCredential, encryptCredential } from './vaultService.js';
+import { resolveAppCredentials } from './oauthService.js';
 import { generateVideoScript } from './geminiService.js';
 import { generateSpeech } from './ttsService.js';
 import { generateAssSubtitles } from './subtitleService.js';
 import { fetchStockVideos } from './mediaCollectorService.js';
-import { renderFinalVideo } from './renderEngine.js';
-import { uploadToYouTubeShorts, refreshYouTubeToken } from './uploaders/youtubeUploader.js';
-import { uploadToTikTok, refreshTikTokToken } from './uploaders/tiktokUploader.js';
-import { uploadToInstagramReels, refreshInstagramToken } from './uploaders/instagramUploader.js';
-import { uploadToKwai } from './uploaders/kwaiUploader.js';
+import { renderFinalVideo, probeDuration } from './renderEngine.js';
+import { uploadVideoToStorage } from './storageService.js';
+import { uploadToYouTubeShorts } from './uploaders/youtubeUploader.js';
+import { uploadToTikTok, refreshTikTokToken, waitForTikTokPublish } from './uploaders/tiktokUploader.js';
+import { uploadToInstagramReels } from './uploaders/instagramUploader.js';
 
 const TEMP_DIR = path.resolve('./tmp_jobs');
+const OUTPUT_DIR = path.resolve('./output/videos');
 
 /**
- * Executes full video production pipeline for a tenant.
- * @param {Object} params
- * @param {string} params.tenantId Tenant ID
- * @param {string} params.jobId Video Job Document ID
- * @param {string} [params.customTopic] Optional specific topic
+ * Job status ladder. The dashboard renders its progress bar off these values,
+ * so the names here and in MonitorProducao must stay in sync.
  */
-export async function executeVideoPipeline({ tenantId, jobId, customTopic = null }) {
-  console.log(`[Pipeline] Starting execution for Tenant: ${tenantId}, Job: ${jobId}`);
+export const JOB_STATUS = {
+  QUEUED: 'QUEUED',
+  SCRIPTING: 'SCRIPTING',
+  AUDIO_GEN: 'AUDIO_GEN',
+  MEDIA_FETCH: 'MEDIA_FETCH',
+  VIDEO_RENDER: 'VIDEO_RENDER',
+  READY_TO_UPLOAD: 'READY_TO_UPLOAD',
+  UPLOADING: 'UPLOADING',
+  PUBLISHED: 'PUBLISHED',
+  FAILED: 'FAILED'
+};
+
+async function setStatus(jobRef, status, extra = {}) {
+  await jobRef.set(
+    { status, updatedAt: new Date().toISOString(), ...extra },
+    { merge: true }
+  );
+  console.log(`[Pipeline] → ${status}`);
+}
+
+/**
+ * Raises a dashboard-visible alert and flags the tenant when a credential dies.
+ */
+async function raiseAuthAlert({ tenantId, tenantName, network, message }) {
+  await db.collection('system_alerts').add({
+    tenantId,
+    network,
+    type: 'TOKEN_EXPIRED',
+    message: `Credencial de ${network} inválida ou expirada para o canal '${tenantName}': ${message}`,
+    resolved: false,
+    createdAt: new Date().toISOString()
+  });
+  await db.collection('tenants').doc(tenantId).set({ status: 'NEEDS_AUTH' }, { merge: true });
+}
+
+function isAuthError(message = '') {
+  return /token|401|unauthorized|auth|credential|invalid_grant|expirou/i.test(message);
+}
+
+/**
+ * Runs the full production pipeline for one job: script → narration →
+ * subtitles → stock footage → render → distribution.
+ *
+ * @param {Object} params
+ * @param {string} params.tenantId
+ * @param {string} params.jobId
+ * @param {string} [params.customTopic] Specific subject requested by the user
+ * @param {string} [params.customInstruction] Extra direction for the AI
+ */
+export async function executeVideoPipeline({ tenantId, jobId, customTopic = null, customInstruction = null }) {
+  console.log(`\n[Pipeline] ===== Job ${jobId} | Tenant ${tenantId} =====`);
 
   const jobRef = db.collection('video_jobs').doc(jobId);
   const tenantRef = db.collection('tenants').doc(tenantId);
@@ -31,208 +79,293 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
 
   const workDir = path.join(TEMP_DIR, jobId);
   await fs.ensureDir(workDir);
+  await fs.ensureDir(OUTPUT_DIR);
 
   try {
-    // Stage 1: Read Tenant & Vault Credentials
+    // ---- Stage 1: tenant + credentials -------------------------------------
     const tenantSnap = await tenantRef.get();
-    if (!tenantSnap.exists) {
-      throw new Error(`Tenant '${tenantId}' does not exist in Firestore.`);
-    }
+    if (!tenantSnap.exists) throw new Error(`Canal '${tenantId}' não existe no Firestore.`);
 
     const tenantData = tenantSnap.data();
+    const tenantName = tenantData.name || tenantData.nome || tenantId;
     const vaultSnap = await vaultRef.get();
     const vaultData = vaultSnap.exists ? vaultSnap.data() : {};
+    const oauthVault = vaultData.oauth || {};
 
     const geminiKey = decryptCredential(vaultData.geminiApiKey) || config.geminiApiKey;
     const pexelsKey = decryptCredential(vaultData.pexelsApiKey) || config.pexelsApiKey;
 
-    if (!geminiKey) {
-      throw new Error(`No Gemini API Key found for tenant ${tenantId}.`);
-    }
+    if (!geminiKey) throw new Error(`Nenhuma GEMINI_API_KEY disponível para o canal ${tenantId}.`);
 
-    // Stage 2: Script Generation (Gemini)
-    await jobRef.set({
-      status: 'SCRIPTING',
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+    // ---- Stage 2: script generation (Gemini) -------------------------------
+    await setStatus(jobRef, JOB_STATUS.SCRIPTING);
 
     const scriptJson = await generateVideoScript({
       apiKey: geminiKey,
-      niche: tenantData.niche || 'General Curiosities',
-      brandIdentity: tenantData.brandIdentity || 'Fast-paced, dynamic',
+      niche: tenantData.niche || tenantData.nicho || 'Curiosidades Gerais',
+      brandIdentity: tenantData.brandIdentity || tenantData.tomDeVoz || 'Dinâmico e direto',
       language: tenantData.language || 'pt-BR',
-      topic: customTopic
+      topic: customTopic,
+      instruction: customInstruction
     });
 
-    await jobRef.set({
-      script: scriptJson,
-      status: 'AUDIO_GEN',
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+    await setStatus(jobRef, JOB_STATUS.AUDIO_GEN, { script: scriptJson });
 
-    // Stage 3: TTS Speech Synthesis (edge-tts)
-    const fullSpeechText = `${scriptJson.hook}. ${scriptJson.sections.map(s => s.text).join(' ')}`;
+    // ---- Stage 3: narration (EdgeTTS) --------------------------------------
+    const narrationText = [scriptJson.hook, ...scriptJson.sections.map(s => s.text)]
+      .filter(Boolean)
+      .join(' ');
     const audioPath = path.join(workDir, 'speech.mp3');
 
-    await generateSpeech({
-      text: fullSpeechText,
+    const { cues } = await generateSpeech({
+      text: narrationText,
       outputFilePath: audioPath,
       voice: tenantData.contentConfig?.voiceId || 'pt-BR-AntonioNeural',
       rate: tenantData.contentConfig?.ttsSpeed || '+10%'
     });
 
-    // Stage 4: Dynamic Subtitles Generation (.ass format)
+    const narrationDuration = await probeDuration(audioPath);
+    console.log(`[Pipeline] Narração: ${narrationDuration.toFixed(2)}s (${cues.length} marcações de tempo)`);
+
+    // ---- Stage 4: subtitles -------------------------------------------------
     const assSubtitlePath = path.join(workDir, 'subtitles.ass');
     await generateAssSubtitles({
-      sections: [{ text: scriptJson.hook, durationEstSeconds: 3 }, ...scriptJson.sections],
+      sections: [{ text: scriptJson.hook }, ...scriptJson.sections],
+      cues,
       outputAssPath: assSubtitlePath,
+      totalDurationSeconds: narrationDuration,
       style: tenantData.contentConfig?.subtitleStyle || {}
     });
 
-    // Stage 5: Media Acquisition (Pexels Stock Clips)
-    await jobRef.set({ status: 'MEDIA_FETCH', updatedAt: new Date().toISOString() }, { merge: true });
-    
-    const primaryQuery = scriptJson.sections[0]?.visualSearchQuery || 'technology abstract';
-    const downloadedClips = await fetchStockVideos({
-      query: primaryQuery,
-      outputDirPath: workDir,
-      pexelsApiKey: pexelsKey,
-      count: 2
-    });
+    // ---- Stage 5: stock footage (Pexels) ------------------------------------
+    await setStatus(jobRef, JOB_STATUS.MEDIA_FETCH);
 
-    // Stage 6: Video Assembly & Rendering (FFmpeg 1080x1920)
-    await jobRef.set({ status: 'RENDERING', updatedAt: new Date().toISOString() }, { merge: true });
-    
-    const outputVideoPath = path.join(workDir, 'final_rendered_short.mp4');
+    const queries = scriptJson.sections
+      .map(s => s.visualSearchQuery)
+      .filter(Boolean)
+      .slice(0, 3);
+    const downloadedClips = await fetchStockVideos({
+      queries: queries.length ? queries : ['abstract technology background'],
+      outputDirPath: workDir,
+      pexelsApiKey: pexelsKey
+    });
+    console.log(`[Pipeline] ${downloadedClips.length} clipe(s) de fundo baixado(s).`);
+
+    // ---- Stage 6: render ----------------------------------------------------
+    await setStatus(jobRef, JOB_STATUS.VIDEO_RENDER);
+
+    const outputVideoPath = path.join(OUTPUT_DIR, `${jobId}_final.mp4`);
     await renderFinalVideo({
       videoClips: downloadedClips,
-      audioPath: audioPath,
-      assSubtitlePath: assSubtitlePath,
-      outputVideoPath: outputVideoPath
+      audioPath,
+      assSubtitlePath,
+      outputVideoPath
     });
 
-    // Stage 7: Distribution to Active Social Networks
-    await jobRef.set({ status: 'UPLOADING', updatedAt: new Date().toISOString() }, { merge: true });
-
-    const targetNetworks = tenantData.targetNetworks || ['YOUTUBE_SHORTS'];
-    const distributionLog = {};
-    const oauthVault = vaultData.oauth || {};
-
-    for (const network of targetNetworks) {
-      try {
-        if (network === 'YOUTUBE_SHORTS' && oauthVault.youtube) {
-          let accessToken = decryptCredential(oauthVault.youtube.accessToken);
-          const refreshToken = decryptCredential(oauthVault.youtube.refreshToken);
-          const clientId = decryptCredential(oauthVault.youtube.clientId);
-          const clientSecret = decryptCredential(oauthVault.youtube.clientSecret);
-
-          // Check token expiry & refresh if needed
-          if (refreshToken && clientId && clientSecret) {
-            try {
-              const refreshed = await refreshYouTubeToken({ clientId, clientSecret, refreshToken });
-              accessToken = refreshed.accessToken;
-            } catch (err) {
-              console.warn(`[Pipeline] YouTube token refresh warning for ${tenantId}:`, err.message);
-            }
-          }
-
-          if (accessToken) {
-            const ytResult = await uploadToYouTubeShorts({
-              videoPath: outputVideoPath,
-              title: scriptJson.title,
-              description: `${scriptJson.hook}\n\n${scriptJson.hashtags?.join(' ')}`,
-              tags: scriptJson.hashtags?.map(h => h.replace('#', '')) || [],
-              accessToken: accessToken
-            });
-
-            distributionLog.youtube = {
-              status: 'PUBLISHED',
-              videoId: ytResult.videoId,
-              videoUrl: ytResult.videoUrl,
-              publishedAt: new Date().toISOString()
-            };
-          }
-        } else if (network === 'TIKTOK' && oauthVault.tiktok) {
-          const accessToken = decryptCredential(oauthVault.tiktok.accessToken);
-          if (accessToken) {
-            const ttResult = await uploadToTikTok({
-              title: `${scriptJson.title} ${scriptJson.hashtags?.join(' ')}`,
-              videoUrl: `file://${outputVideoPath}`,
-              accessToken: accessToken
-            });
-            distributionLog.tiktok = { status: 'PUBLISHED', publishId: ttResult.publishId };
-          }
-        } else if (network === 'INSTAGRAM_REELS' && oauthVault.instagram) {
-          const accessToken = decryptCredential(oauthVault.instagram.longLivedAccessToken);
-          const igUserId = oauthVault.instagram.igUserId;
-          if (accessToken && igUserId) {
-            const igResult = await uploadToInstagramReels({
-              igUserId: igUserId,
-              caption: `${scriptJson.title}\n${scriptJson.hashtags?.join(' ')}`,
-              videoUrl: `file://${outputVideoPath}`,
-              accessToken: accessToken
-            });
-            distributionLog.instagram = { status: 'PUBLISHED', mediaId: igResult.mediaId };
-          }
-        } else if (network === 'KWAI' && oauthVault.kwai) {
-          const accessToken = decryptCredential(oauthVault.kwai.accessToken);
-          if (accessToken) {
-            const kwaiResult = await uploadToKwai({
-              title: scriptJson.title,
-              videoUrl: `file://${outputVideoPath}`,
-              accessToken: accessToken
-            });
-            distributionLog.kwai = { status: 'PUBLISHED', photoId: kwaiResult.photoId };
-          }
-        }
-      } catch (uploadErr) {
-        console.error(`[Pipeline] Upload error for network ${network}:`, uploadErr.message);
-        distributionLog[network.toLowerCase()] = {
-          status: 'FAILED',
-          error: uploadErr.message
-        };
-
-        // Create alert entry for token/auth issues
-        if (uploadErr.message.includes('token') || uploadErr.message.includes('401') || uploadErr.message.includes('auth')) {
-          await db.collection('system_alerts').add({
-            tenantId,
-            network,
-            type: 'TOKEN_EXPIRED',
-            message: `Credencial de ${network} expirou ou é inválida para o canal '${tenantData.name}'.`,
-            resolved: false,
-            createdAt: new Date().toISOString()
-          });
-          await tenantRef.set({ status: 'NEEDS_AUTH' }, { merge: true });
-        }
-      }
-    }
-
-    // Final Stage: Complete Job
-    await jobRef.set({
-      status: 'COMPLETED',
+    await setStatus(jobRef, JOB_STATUS.READY_TO_UPLOAD, {
       assets: {
         audioUrl: audioPath,
         subtitleAssUrl: assSubtitlePath,
         finalVideoUrl: outputVideoPath
+      }
+    });
+
+    // ---- Stage 7: distribution ---------------------------------------------
+    await setStatus(jobRef, JOB_STATUS.UPLOADING);
+
+    // When the channel does not pin an explicit list, publish to every network
+    // that actually has stored credentials. Otherwise connecting TikTok or
+    // Instagram would have no effect, since nothing else populates this field.
+    const providerToNetwork = {
+      youtube: 'YOUTUBE_SHORTS',
+      tiktok: 'TIKTOK',
+      instagram: 'INSTAGRAM_REELS'
+    };
+    const connectedNetworks = Object.keys(oauthVault)
+      .map(provider => providerToNetwork[provider])
+      .filter(Boolean);
+
+    const targetNetworks = tenantData.targetNetworks?.length
+      ? tenantData.targetNetworks
+      : connectedNetworks;
+
+    if (targetNetworks.length === 0) {
+      throw new Error(
+        'Nenhuma rede conectada neste canal. Conecte YouTube, TikTok ou Instagram antes de produzir.'
+      );
+    }
+    console.log(`[Pipeline] Distribuindo para: ${targetNetworks.join(', ')}`);
+    const distributionLog = {};
+    let publishedVideoUrl = null;
+
+    // TikTok and Instagram download the file from a URL, so it only gets
+    // uploaded to Storage when one of them is actually a target.
+    const needsPublicUrl = targetNetworks.some(n => ['TIKTOK', 'INSTAGRAM_REELS'].includes(n));
+    let publicVideoUrl = null;
+    let storagePath = null;
+
+    if (needsPublicUrl) {
+      try {
+        const uploaded = await uploadVideoToStorage({ localFilePath: outputVideoPath, tenantId, jobId });
+        publicVideoUrl = uploaded.publicUrl;
+        storagePath = uploaded.storagePath;
+        console.log('[Pipeline] Vídeo publicado no Storage para TikTok/Instagram.');
+      } catch (err) {
+        console.error('[Pipeline] Falha ao subir para o Storage:', err.message);
+      }
+    }
+
+    const hashtags = scriptJson.hashtags || [];
+    const caption = `${scriptJson.title}\n\n${scriptJson.hook}\n\n${hashtags.join(' ')}`;
+
+    for (const network of targetNetworks) {
+      try {
+        if (network === 'YOUTUBE_SHORTS') {
+          const yt = oauthVault.youtube;
+          if (!yt) throw new Error('Canal do YouTube não conectado.');
+
+          // Refreshing must use the same app that issued the token — which may
+          // be this channel's own Google Cloud project rather than the shared one.
+          const { credentials: ytApp } = await resolveAppCredentials({ tenantId, network: 'youtube' });
+
+          const result = await uploadToYouTubeShorts({
+            videoPath: outputVideoPath,
+            title: scriptJson.title,
+            description: caption,
+            tags: hashtags.map(h => h.replace('#', '')),
+            privacyStatus: tenantData.contentConfig?.privacyStatus || 'public',
+            clientId: ytApp.clientId,
+            clientSecret: ytApp.clientSecret,
+            refreshToken: decryptCredential(yt.refreshToken),
+            accessToken: decryptCredential(yt.accessToken)
+          });
+
+          publishedVideoUrl = publishedVideoUrl || result.videoUrl;
+          distributionLog.youtube = {
+            status: 'PUBLISHED',
+            videoId: result.videoId,
+            videoUrl: result.videoUrl,
+            privacyStatus: result.privacyStatus,
+            publishedAt: new Date().toISOString()
+          };
+        } else if (network === 'TIKTOK') {
+          const tt = oauthVault.tiktok;
+          if (!tt) throw new Error('Conta do TikTok não conectada.');
+
+          // TikTok access tokens expire in ~24h, so always refresh first
+          let accessToken = decryptCredential(tt.accessToken);
+          const refreshToken = decryptCredential(tt.refreshToken);
+          if (refreshToken) {
+            const { credentials: ttApp } = await resolveAppCredentials({ tenantId, network: 'tiktok' });
+            const refreshed = await refreshTikTokToken({
+              clientKey: ttApp.clientKey,
+              clientSecret: ttApp.clientSecret,
+              refreshToken
+            });
+            accessToken = refreshed.accessToken;
+
+            // Persist the rotated token — TikTok invalidates the previous one
+            await vaultRef.set(
+              {
+                oauth: {
+                  tiktok: {
+                    accessToken: encryptCredential(refreshed.accessToken),
+                    refreshToken: encryptCredential(refreshed.refreshToken),
+                    expiresAt: refreshed.expiresAt
+                  }
+                }
+              },
+              { merge: true }
+            );
+          }
+
+          const result = await uploadToTikTok({
+            videoPath: outputVideoPath,
+            title: caption,
+            accessToken
+          });
+          const finished = await waitForTikTokPublish({ publishId: result.publishId, accessToken });
+
+          distributionLog.tiktok = {
+            status: 'PUBLISHED',
+            publishId: result.publishId,
+            postId: finished.publiclyAvailablePostId,
+            privacyLevel: result.privacyLevel,
+            publishedAt: new Date().toISOString()
+          };
+        } else if (network === 'INSTAGRAM_REELS') {
+          const ig = oauthVault.instagram;
+          if (!ig) throw new Error('Conta do Instagram não conectada.');
+          if (!publicVideoUrl) {
+            throw new Error('URL pública do vídeo indisponível (falha no upload para o Firebase Storage).');
+          }
+
+          const result = await uploadToInstagramReels({
+            igUserId: ig.igUserId,
+            caption,
+            videoUrl: publicVideoUrl,
+            accessToken: decryptCredential(ig.longLivedAccessToken)
+          });
+
+          distributionLog.instagram = {
+            status: 'PUBLISHED',
+            mediaId: result.mediaId,
+            permalink: result.permalink,
+            publishedAt: new Date().toISOString()
+          };
+        } else {
+          console.warn(`[Pipeline] Rede desconhecida ignorada: ${network}`);
+        }
+      } catch (uploadErr) {
+        console.error(`[Pipeline] Erro publicando em ${network}:`, uploadErr.message);
+        distributionLog[network.toLowerCase()] = {
+          status: 'FAILED',
+          error: uploadErr.message,
+          failedAt: new Date().toISOString()
+        };
+
+        if (isAuthError(uploadErr.message)) {
+          await raiseAuthAlert({ tenantId, tenantName, network, message: uploadErr.message });
+        }
+      }
+    }
+
+    // ---- Final -------------------------------------------------------------
+    const anyPublished = Object.values(distributionLog).some(entry => entry.status === 'PUBLISHED');
+
+    await jobRef.set(
+      {
+        status: anyPublished ? JOB_STATUS.PUBLISHED : JOB_STATUS.FAILED,
+        publishedVideoUrl,
+        distributionLog,
+        assets: {
+          audioUrl: audioPath,
+          subtitleAssUrl: assSubtitlePath,
+          finalVideoUrl: outputVideoPath,
+          publicVideoUrl,
+          storagePath
+        },
+        errorMessage: anyPublished
+          ? null
+          : 'Nenhuma rede aceitou a publicação. Verifique as conexões do canal.',
+        completedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       },
-      distributionLog: distributionLog,
-      completedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+      { merge: true }
+    );
 
-    console.log(`[Pipeline] Job ${jobId} completed successfully!`);
-    return { success: true, jobId, videoPath: outputVideoPath };
-
+    console.log(`[Pipeline] Job ${jobId} finalizado (publicado: ${anyPublished}).`);
+    return { success: anyPublished, jobId, videoPath: outputVideoPath, distributionLog };
   } catch (pipelineErr) {
-    console.error(`[Pipeline] Critical failure on Job ${jobId}:`, pipelineErr.message);
-    await jobRef.set({
-      status: 'FAILED',
-      errorMessage: pipelineErr.message,
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
-
+    console.error(`[Pipeline] Falha crítica no job ${jobId}:`, pipelineErr.message);
+    await jobRef.set(
+      {
+        status: JOB_STATUS.FAILED,
+        errorMessage: pipelineErr.message,
+        updatedAt: new Date().toISOString()
+      },
+      { merge: true }
+    );
     throw pipelineErr;
-  } finally {
-    // Cleanup transient clips if needed
   }
 }

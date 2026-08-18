@@ -1,209 +1,158 @@
-import admin from 'firebase-admin';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import fs from 'fs';
-import { execSync } from 'child_process';
-import { google } from 'googleapis';
-import MsEdgeTTSModule from 'node-edge-tts';
-import ffmpegStatic from 'ffmpeg-static';
-import ffmpeg from 'fluent-ffmpeg';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
-const projectId = process.env.FIREBASE_PROJECT_ID;
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-if (privateKey) {
-  privateKey = privateKey.trim();
-  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-    privateKey = privateKey.substring(1, privateKey.length - 1);
-  }
-  privateKey = privateKey.replace(/\\n/g, '\n');
-}
-
-if (!admin.apps.length && projectId && clientEmail && privateKey) {
-  admin.initializeApp({
-    credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET
-  });
-}
-
-const db = admin.apps.length ? admin.firestore() : null;
-
-ffmpeg.setFfmpegPath(ffmpegStatic);
-
-const audiosDir = path.resolve(__dirname, '../output/audios');
-const subtitlesDir = path.resolve(__dirname, '../output/subtitles');
-const videosDir = path.resolve(__dirname, '../output/videos');
-
-[audiosDir, subtitlesDir, videosDir].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-});
-
-console.log('=======================================================');
-console.log('🚀 HERMES ENGINE WORKER - MONITORANDO ESTEIRA DO FIRESTORE');
-console.log('=======================================================');
-
-let processando = false;
+import { db } from './src/config/firebase.js';
+import { config } from './src/config/env.js';
+import { runPreflight } from './src/config/preflight.js';
+import { executeVideoPipeline, JOB_STATUS } from './src/services/pipelineOrchestrator.js';
 
 /**
- * 1. Processa Áudio & Legendas (EdgeTTS) -> status: VIDEO_RENDER (50%)
+ * Hermes production worker.
+ *
+ * Watches Firestore for jobs in QUEUED and runs the real pipeline on each one,
+ * strictly one at a time (FFmpeg rendering is CPU-bound, and running several
+ * renders concurrently on one machine only makes them all slower).
+ *
+ * This replaces the previous mock worker, which wrote the literal string
+ * "HEADER_MP4_HERMES_RENDERED" into a .mp4 file and marked jobs PUBLISHED with a
+ * hardcoded YouTube ID — nothing was ever rendered or uploaded.
  */
-async function processarAudioLegenda(jobId, jobData) {
-  console.log(`\n🔊 [FASE 1/3] Gerando Voz Neural EdgeTTS para Job [${jobId}]...`);
-  
-  const scriptText = jobData.script?.roteiro_locucao || jobData.script?.locucao || 'Roteiro gerado pela IA.';
-  const audioPath = path.join(audiosDir, `${jobId}_narration.mp3`);
-  const subtitlePath = path.join(subtitlesDir, `${jobId}_subtitles.vtt`);
 
-  try {
-    const tts = new MsEdgeTTSModule.MsEdgeTTS();
-    await tts.setMetadata('pt-BR-AntonioNeural', MsEdgeTTSModule.OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-    const filePath = await tts.toFile(audioPath, scriptText);
+const POLL_INTERVAL_MS = 15000;
+/** A job stuck in a working state longer than this is considered abandoned. */
+const STALE_JOB_MS = 30 * 60 * 1000;
 
-    // Cria arquivo VTT de legendas simples
-    const vttContent = `WEBVTT\n\n00:00:00.000 --> 00:01:00.000\n${scriptText.substring(0, 100)}`;
-    fs.writeFileSync(subtitlePath, vttContent, 'utf-8');
+const WORKING_STATES = [
+  JOB_STATUS.SCRIPTING,
+  JOB_STATUS.AUDIO_GEN,
+  JOB_STATUS.MEDIA_FETCH,
+  JOB_STATUS.VIDEO_RENDER,
+  JOB_STATUS.READY_TO_UPLOAD,
+  JOB_STATUS.UPLOADING
+];
 
-    console.log(`✅ Áudio e legenda gerados fisicamente em: ${filePath}`);
-
-    await db.collection('video_jobs').doc(jobId).update({
-      status: 'VIDEO_RENDER',
-      'assets.audioUrl': filePath,
-      'assets.subtitleUrl': subtitlePath,
-      updatedAt: new Date().toISOString()
-    });
-
-    console.log(`🔄 Status atualizado para VIDEO_RENDER (50%)`);
-    return { audioPath, subtitlePath };
-  } catch (err) {
-    console.error(`❌ Erro Fase Áudio:`, err.message);
-    // Transiciona para VIDEO_RENDER para garantir avanço gracioso
-    await db.collection('video_jobs').doc(jobId).update({
-      status: 'VIDEO_RENDER',
-      updatedAt: new Date().toISOString()
-    });
-  }
-}
+let busy = false;
+let shuttingDown = false;
 
 /**
- * 2. Renderiza Vídeo Físico (FFmpeg) -> status: READY_TO_UPLOAD (75%)
+ * Reclaims jobs abandoned by a previous worker crash so they do not sit in a
+ * working state forever.
  */
-async function processarRenderizacaoVideo(jobId, jobData) {
-  console.log(`\n🎬 [FASE 2/3] Renderizando Vídeo 9:16 com FFmpeg para Job [${jobId}]...`);
-  
-  const videoOutputPath = path.join(videosDir, `${jobId}_final.mp4`);
+async function requeueStaleJobs() {
+  const cutoff = new Date(Date.now() - STALE_JOB_MS).toISOString();
+  const snapshot = await db.collection('video_jobs').where('status', 'in', WORKING_STATES).get();
 
-  // Se já existir vídeo mock/fundo ou for teste, cria/copia
-  try {
-    // Escreve um marcador de sucesso
-    fs.writeFileSync(videoOutputPath, 'HEADER_MP4_HERMES_RENDERED');
-
-    await db.collection('video_jobs').doc(jobId).update({
-      status: 'READY_TO_UPLOAD',
-      'assets.finalVideoUrl': videoOutputPath,
-      updatedAt: new Date().toISOString()
-    });
-
-    console.log(`✅ Vídeo renderizado fisicamente em: ${videoOutputPath}`);
-    console.log(`🔄 Status atualizado para READY_TO_UPLOAD (75%)`);
-    return videoOutputPath;
-  } catch (err) {
-    console.error(`❌ Erro Renderização:`, err.message);
-    await db.collection('video_jobs').doc(jobId).update({
-      status: 'READY_TO_UPLOAD',
-      updatedAt: new Date().toISOString()
-    });
-  }
-}
-
-/**
- * 3. Publica no YouTube API -> status: PUBLISHED (100%)
- */
-async function processarPublicacaoYouTube(jobId, jobData) {
-  console.log(`\n🚀 [FASE 3/3] Finalizando Publicação para Job [${jobId}]...`);
-
-  const titulo = jobData.script?.titulo || 'Vídeo Curto #Shorts';
-  const queryTitle = encodeURIComponent(titulo);
-  const videoUrl = `https://www.youtube.com/results?search_query=${queryTitle}`;
-
-  await db.collection('video_jobs').doc(jobId).update({
-    status: 'PUBLISHED',
-    publishedVideoUrl: videoUrl,
-    distributionLog: {
-      youtube: {
-        videoId: 'dQw4w9WgXcQ',
-        publishedAt: new Date().toISOString()
-      }
-    },
-    updatedAt: new Date().toISOString()
-  });
-
-  console.log(`🎉 JOB [${jobId}] PUBLICADO COM SUCESSO NO YOUTUBE (100%)!`);
-}
-
-/**
- * Loop Principal do Worker
- */
-async function escutarEsteira() {
-  if (!db) {
-    console.error('❌ Firestore não inicializado no worker.');
-    return;
-  }
-
-  console.log('📡 Worker escutando novas requisições em tempo real no Firestore...');
-
-  db.collection('video_jobs').onSnapshot(async (snapshot) => {
-    if (processando) return;
-
-    for (const change of snapshot.docChanges()) {
-      if (change.type === 'added' || change.type === 'modified') {
-        const jobDoc = change.doc;
-        const jobId = jobDoc.id;
-        const jobData = jobDoc.data();
-
-        if (jobData.status === 'AUDIO_GEN') {
-          processando = true;
-          try {
-            await processarAudioLegenda(jobId, jobData);
-            await new Promise(r => setTimeout(r, 1500));
-            await processarRenderizacaoVideo(jobId, jobData);
-            await new Promise(r => setTimeout(r, 1500));
-            await processarPublicacaoYouTube(jobId, jobData);
-          } catch (err) {
-            console.error(`Erro ao processar esteira do job ${jobId}:`, err.message);
-          } finally {
-            processando = false;
-          }
-        } else if (jobData.status === 'VIDEO_RENDER') {
-          processando = true;
-          try {
-            await processarRenderizacaoVideo(jobId, jobData);
-            await new Promise(r => setTimeout(r, 1500));
-            await processarPublicacaoYouTube(jobId, jobData);
-          } catch (err) {
-            console.error(`Erro na fase de renderização do job ${jobId}:`, err.message);
-          } finally {
-            processando = false;
-          }
-        } else if (jobData.status === 'READY_TO_UPLOAD' || jobData.status === 'UPLOADING') {
-          processando = true;
-          try {
-            await processarPublicacaoYouTube(jobId, jobData);
-          } catch (err) {
-            console.error(`Erro no upload do job ${jobId}:`, err.message);
-          } finally {
-            processando = false;
-          }
-        }
-      }
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    if ((data.updatedAt || data.createdAt || '') < cutoff) {
+      console.warn(`[Worker] Job ${doc.id} travado desde ${data.updatedAt} — devolvendo para a fila.`);
+      await doc.ref.set(
+        { status: JOB_STATUS.QUEUED, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
     }
+  }
+}
+
+/**
+ * Claims and processes the oldest queued job, if any.
+ * @returns {Promise<boolean>} true when a job was processed
+ */
+async function processNextJob() {
+  const snapshot = await db
+    .collection('video_jobs')
+    .where('status', '==', JOB_STATUS.QUEUED)
+    .limit(10)
+    .get();
+
+  if (snapshot.empty) return false;
+
+  const jobs = snapshot.docs.sort((a, b) =>
+    (a.data().createdAt || '').localeCompare(b.data().createdAt || '')
+  );
+
+  const jobDoc = jobs[0];
+  const job = jobDoc.data();
+
+  // Claim the job transactionally so a second worker cannot pick up the same one
+  const claimed = await db.runTransaction(async tx => {
+    const fresh = await tx.get(jobDoc.ref);
+    if (!fresh.exists || fresh.data().status !== JOB_STATUS.QUEUED) return false;
+    tx.set(
+      fresh.ref,
+      { status: JOB_STATUS.SCRIPTING, claimedAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
+    return true;
+  });
+
+  if (!claimed) return false;
+
+  console.log(`\n[Worker] ▶ Processando job ${jobDoc.id} (canal ${job.tenantId})`);
+  try {
+    await executeVideoPipeline({
+      tenantId: job.tenantId,
+      jobId: jobDoc.id,
+      customTopic: job.customTopic || null,
+      customInstruction: job.customInstruction || null
+    });
+    console.log(`[Worker] ✔ Job ${jobDoc.id} concluído.`);
+  } catch (err) {
+    // executeVideoPipeline already recorded FAILED + errorMessage on the document
+    console.error(`[Worker] ✖ Job ${jobDoc.id} falhou: ${err.message}`);
+  }
+
+  return true;
+}
+
+async function tick() {
+  if (busy || shuttingDown) return;
+  busy = true;
+  try {
+    // Drain the queue before going back to sleep
+    while (!shuttingDown && (await processNextJob())) {
+      /* keep going */
+    }
+  } catch (err) {
+    console.error('[Worker] Erro no ciclo:', err.message);
+  } finally {
+    busy = false;
+  }
+}
+
+async function main() {
+  console.log('=======================================================');
+  console.log('🚀 HERMES WORKER — esteira de produção real');
+  console.log(`   Projeto Firebase: ${config.firebase.projectId}`);
+  console.log(`   Intervalo de verificação: ${POLL_INTERVAL_MS / 1000}s`);
+  console.log('=======================================================');
+
+  // Fail fast on a bad clock or missing keys rather than after a long render
+  await runPreflight();
+
+  await requeueStaleJobs();
+
+  // Realtime listener reacts the instant the dashboard queues something...
+  db.collection('video_jobs')
+    .where('status', '==', JOB_STATUS.QUEUED)
+    .onSnapshot(
+      snapshot => {
+        if (!snapshot.empty) tick();
+      },
+      err => console.error('[Worker] Erro no listener do Firestore:', err.message)
+    );
+
+  // ...and a poll covers listener drops and reconnects.
+  setInterval(tick, POLL_INTERVAL_MS);
+  await tick();
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    console.log('\n[Worker] Encerrando após o job atual...');
+    shuttingDown = true;
+    setTimeout(() => process.exit(0), busy ? 5000 : 0);
   });
 }
 
-escutarEsteira();
+main().catch(err => {
+  console.error('[Worker] Falha fatal:', err);
+  process.exit(1);
+});

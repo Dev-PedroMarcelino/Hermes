@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc } from 'firebase/firestore';
-import { X, Plus, Sparkles, Layers, Cpu, CheckCircle2, Rocket } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { X, Plus, Sparkles, Layers, Cpu, CheckCircle2, Rocket, AlertCircle } from 'lucide-react';
+import { triggerVideoJob } from '../lib/engineApi';
 
 export default function CriarVideoQuickModal({ onClose, onCreated }) {
   const [canais, setCanais] = useState([]);
@@ -12,6 +13,7 @@ export default function CriarVideoQuickModal({ onClose, onCreated }) {
   const [quantidadePartes, setQuantidadePartes] = useState('3');
   const [criando, setCriando] = useState(false);
   const [sucesso, setSucesso] = useState(false);
+  const [erro, setErro] = useState('');
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'tenants'), (snapshot) => {
@@ -31,67 +33,45 @@ export default function CriarVideoQuickModal({ onClose, onCreated }) {
 
     setCriando(true);
     setSucesso(false);
+    setErro('');
 
     try {
+      // Jobs are queued through the engine, which owns the whole pipeline. The
+      // roteiro itself is written by Gemini — the dashboard only supplies the
+      // subject and the direction for the AI.
       if (isMiniseries) {
         const numPartes = parseInt(quantidadePartes, 10);
-        const serieId = `serie_${Date.now()}`;
 
         for (let i = 1; i <= numPartes; i++) {
           const isLast = i === numPartes;
-          const parteScript = {
-            ordem: i,
-            parte: `Parte ${i} de ${numPartes}`,
-            titulo: `${assunto.trim()} - Parte ${i} #Shorts`,
-            descricao: descricao.trim() || `Minissérie sobre ${assunto.trim()}`,
-            tags: ['#shorts', '#minisserie', `#parte${i}`],
-            roteiro_locucao: `[GANCHO DOS 3 SEGUNDOS]: O que quase ninguém sabe sobre ${assunto.trim()} vai te deixar chocado... [DIRETRIZ DA IA: ${descricao.trim()}]... ${
-              isLast 
-                ? 'E foi assim que a história se encerrou. Siga o canal para mais!' 
-                : `Mas o que aconteceu logo em seguida foi ainda mais surpreendente... Curta para a Parte ${i + 1}!`
-            }`
-          };
+          const serieInstruction = [
+            `Este é o episódio ${i} de uma minissérie de ${numPartes} partes sobre "${assunto.trim()}".`,
+            `Inclua "Parte ${i}" no título.`,
+            isLast
+              ? 'Encerre a história com uma conclusão satisfatória e um convite para seguir o canal.'
+              : `Termine obrigatoriamente com um cliffhanger dramático chamando o público para a Parte ${i + 1}.`,
+            descricao.trim()
+          ].filter(Boolean).join(' ');
 
-          if (db) {
-            await addDoc(collection(db, 'video_jobs'), {
-              tenantId: selectedTenant,
-              serieId,
-              ordem: i,
-              isMiniseries: true,
-              totalPartes: numPartes,
-              status: 'AUDIO_GEN',
-              script: parteScript,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            });
-          }
-        }
-      } else {
-        const roteiroScript = {
-          titulo: `${assunto.trim()} #Shorts`,
-          descricao: descricao.trim() || `Vídeo sobre ${assunto.trim()}`,
-          tags: ['#shorts', '#viral', '#ia'],
-          roteiro_locucao: `[GANCHO DOS 3 SEGUNDOS]: Descubra a verdade oculta sobre ${assunto.trim()}! [DIRETRIZ DA IA: ${descricao.trim()}]`
-        };
-
-        if (db) {
-          await addDoc(collection(db, 'video_jobs'), {
+          await triggerVideoJob({
             tenantId: selectedTenant,
-            status: 'AUDIO_GEN',
-            script: roteiroScript,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            customTopic: assunto.trim(),
+            customInstruction: serieInstruction
           });
         }
+      } else {
+        await triggerVideoJob({
+          tenantId: selectedTenant,
+          customTopic: assunto.trim(),
+          customInstruction: descricao.trim() || null
+        });
       }
 
       setSucesso(true);
       if (onCreated) onCreated();
-      setTimeout(() => {
-        onClose();
-      }, 1200);
+      setTimeout(() => onClose(), 1200);
     } catch (err) {
-      alert(`Erro ao solicitar criação do vídeo: ${err.message}`);
+      setErro(err.message);
     } finally {
       setCriando(false);
     }
@@ -233,9 +213,19 @@ export default function CriarVideoQuickModal({ onClose, onCreated }) {
             )}
           </div>
 
+          {erro && (
+            <div style={{
+              background: 'rgba(255, 71, 87, 0.08)', border: '1px solid rgba(255, 71, 87, 0.3)',
+              padding: '12px 14px', borderRadius: '10px', display: 'flex', gap: '10px', alignItems: 'flex-start'
+            }}>
+              <AlertCircle size={18} style={{ color: '#ff4757', flexShrink: 0, marginTop: '1px' }} />
+              <span style={{ fontSize: '12px', lineHeight: 1.5 }}>{erro}</span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px' }}>
             <button type="submit" className="gradient-btn" disabled={criando} style={{ padding: '12px 28px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Rocket size={18} /> {criando ? 'Iniciando IA...' : 'OK - Iniciar Criação do Vídeo'}
+              <Rocket size={18} /> {criando ? 'Enfileirando...' : 'OK - Iniciar Criação do Vídeo'}
             </button>
 
             {sucesso && (

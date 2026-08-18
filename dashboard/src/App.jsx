@@ -1,13 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import MonitorProducao from './components/MonitorProducao';
 import GerenciadorCanais from './components/GerenciadorCanais';
 import CriarPautaManual from './components/CriarPautaManual';
 import ConfiguracoesGlobaisModal from './components/ConfiguracoesGlobaisModal';
-import { Video, Radio, Film, Zap, Settings, Cpu } from 'lucide-react';
+import { Video, Radio, Film, Zap, Settings, CheckCircle2, AlertCircle, X } from 'lucide-react';
+
+const NOMES_DE_REDE = { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram' };
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('manual');
   const [showSettings, setShowSettings] = useState(false);
+  const [oauthResult, setOauthResult] = useState(null);
+
+  // The engine's OAuth callback redirects the whole browser back here, so the
+  // outcome has to be read at the app level — the modal that started the flow
+  // no longer exists by the time we return.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get('oauth');
+    if (!outcome) return;
+
+    setOauthResult({
+      ok: outcome === 'success',
+      network: params.get('network'),
+      account: params.get('account'),
+      message: params.get('message')
+    });
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -31,20 +51,19 @@ export default function App() {
           {/* Logo Brand */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '300px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #00ff87, #14a76c)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 800,
-                color: '#06090c',
-                boxShadow: '0 0 20px rgba(0, 255, 135, 0.5)'
-              }}>
-                <Cpu size={22} color="#06090c" />
-              </div>
+              <img
+                src="/logo-hermes.png"
+                alt="Hermes"
+                width={44}
+                height={44}
+                style={{
+                  display: 'block',
+                  borderRadius: '50%',
+                  // The logo art is a neon ring on black; the glow does the
+                  // lifting here instead of a background plate.
+                  boxShadow: '0 0 22px rgba(0, 255, 135, 0.35)'
+                }}
+              />
               <div>
                 <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px' }} className="gradient-text">
                   HERMES
@@ -138,6 +157,45 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Resultado do retorno do OAuth das redes sociais */}
+      {oauthResult && (
+        <div style={{
+          maxWidth: '1380px', width: '100%', margin: '20px auto 0', padding: '0 28px'
+        }}>
+          <div className="glass-panel" style={{
+            padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start',
+            border: `1px solid ${oauthResult.ok ? 'rgba(0, 255, 135, 0.35)' : 'rgba(255, 71, 87, 0.35)'}`
+          }}>
+            {oauthResult.ok
+              ? <CheckCircle2 size={20} style={{ color: '#00ff87', flexShrink: 0, marginTop: '2px' }} />
+              : <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />}
+
+            <div style={{ flex: 1, fontSize: '13px', lineHeight: 1.6 }}>
+              {oauthResult.ok ? (
+                <>
+                  <strong>{NOMES_DE_REDE[oauthResult.network] || oauthResult.network} conectado!</strong>
+                  {oauthResult.account && <> Conta: {oauthResult.account}.</>}
+                  {' '}Os tokens foram salvos criptografados no cofre do canal.
+                </>
+              ) : (
+                <>
+                  <strong>Falha ao conectar {NOMES_DE_REDE[oauthResult.network] || oauthResult.network}.</strong>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginTop: '4px' }}>
+                    {oauthResult.message}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button onClick={() => setOauthResult(null)} style={{
+              background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer'
+            }}>
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main View Container Responsivo */}
       <main className="main-content" style={{ maxWidth: '1380px', width: '100%', margin: '0 auto', padding: '32px 28px', flex: 1 }}>

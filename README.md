@@ -1,150 +1,220 @@
-# 🚀 HERMES - OMNICHANNEL CASH-COW CONTENT FACTORY (V1.0)
+# 🚀 HERMES — Omnichannel Cash-Cow Content Factory
 
-> **Plataforma SaaS Multi-Tenant autônoma para geração, roteirização, síntese de voz, renderização física e publicação de vídeos curtos virais no YouTube Shorts, TikTok e Instagram Reels.**
-
----
-
-## 📌 Visão Geral e Objetivos do Projeto
-
-O **Hermes** foi construído como uma fábrica de conteúdo autônoma focada no modelo de negócios **Cash Cow** (canais automatizados focados em alta retenção e monetização). 
-
-A plataforma resolve o gargalo de produção em massa de vídeos curtos através de uma esteira *end-to-end* operada por Inteligência Artificial e automação nativa:
-
-1. **Geração Inédita de Roteiros (Gemini 1.5 Flash)** com memória anti-duplicação.
-2. **Locução Neural & Legendas (EdgeTTS + WebVTT)** com vozes de estúdio em português.
-3. **Renderização de Vídeo Vertical 9:16 (FFmpeg)** com legendas queimadas (*hardsubs*).
-4. **Upload Real Multi-Tenant (YouTube Data API v3)** direto no canal do cliente via OAuth2.
-5. **Sala de Controle & Dashboard (React + Vite)** com monitoramento ao vivo em tempo real.
+> Plataforma multi-tenant para gerar, narrar, renderizar e **publicar automaticamente** vídeos curtos verticais no YouTube Shorts, TikTok e Instagram Reels.
 
 ---
 
-## ✨ Principais Funcionalidades
+## 📌 Como o sistema funciona
 
-### 🧠 1. Sistema Anti-Repetição (Memória de Contexto)
-- Antes de gerar novas pautas, o motor consulta o histórico das últimas 20 pautas gravadas no Cloud Firestore para aquele canal específico.
-- Injeta a lista de exlusão no prompt do Google Gemini exigindo temas 100% inéditos e sem duplicação de ideias.
+Três processos independentes:
 
-### 🎬 2. Motor de Minisséries & Cliffhangers Virais
-- Permite transformar qualquer tema em uma **Minissérie em Partes Encadeadas** (2, 3 ou 5 partes).
-- Cada parte é gerada com um **gancho nos primeiros 3 segundos** e encerra obrigatoriamente com um *cliffhanger* dramático convidando o público a assistir o próximo episódio.
+| Processo | Comando | Papel |
+|---|---|---|
+| **Engine (API)** | `npm run engine` | Recebe pedidos da dashboard, faz o OAuth das redes, enfileira jobs |
+| **Worker** | `npm run worker` | Executa a produção de verdade, um job por vez |
+| **Dashboard** | `npm run dashboard` | Interface de controle e monitoramento em tempo real |
 
-### 🔊 3. Locução Neural & Legendas Sincronizadas
-- Utiliza a tecnologia **EdgeTTS** (`pt-BR-AntonioNeural`, `pt-BR-FranciscaNeural`, etc.) para criar o arquivo de áudio de alta qualidade `.mp3` no disco (`output/audios/`).
-- Sincroniza e exporta o arquivo de legendas `.vtt` (`output/subtitles/`).
+O **Firestore é o barramento** entre eles: a dashboard só lê, o worker escreve o progresso, e a dashboard reflete ao vivo.
 
-### 🎥 4. Renderização Física de Vídeo (FFmpeg + fluent-ffmpeg)
-- Processa o vídeo final em resolução vertical 1080x1920 (9:16) adequado para Shorts/TikTok.
-- Mescla o áudio de narração, ajusta a duração exata (`-shortest`) e queima as legendas centralizadas na tela.
+### Esteira de produção (executada pelo worker)
 
-### 🌐 5. Conexão OAuth2 Multi-Tenant por Canal
-- Cada canal cadastrado possui sua própria área de **Conexões de Rede**.
-- Permite autenticar via OAuth2 oficial do Google/YouTube, armazenando com segurança os tokens (`access_token`, `refresh_token`) no documento do canal no Firestore.
+```
+QUEUED
+  → SCRIPTING        roteiro escrito pelo Gemini (JSON estruturado)
+  → AUDIO_GEN        locução neural Edge TTS + marcações de tempo por palavra
+  → MEDIA_FETCH      clipes verticais de fundo do Pexels (um por seção)
+  → VIDEO_RENDER     FFmpeg 1080x1920, concat dos clipes, legendas queimadas
+  → READY_TO_UPLOAD  MP4 final em output/videos/
+  → UPLOADING        publicação nas redes conectadas
+  → PUBLISHED        (ou FAILED, com a mensagem de erro no documento do job)
+```
 
-### 📊 6. Dashboard Cyberpunk Tech (React + Vite)
-- **Sala de Controle dos Canais**: Gerenciamento de prompts da IA, tom de voz e frequência de postagens.
-- **Monitor de Produção em 2 Colunas**:
-  - **Coluna Esquerda**: Galeria de vídeos publicados com **Player do YouTube Incorporado (`<iframe>`)** para assistir diretamente na Dashboard.
-  - **Coluna Direita**: Esteira de produção com **Barra de Progresso e Porcentagem em Tempo Real** (25%, 50%, 75%, 100%).
-- **Botão `+ Criar Novo Vídeo`**: Modal de disparo instantâneo por assunto e orientação direta para a IA.
-
-### 🗑️ 7. Exclusão em Cascata (Vídeos & Canais)
-- Apaga registros do Firestore, exclui os arquivos físicos locais (`.mp4`, `.mp3`, `.vtt`) e remove o vídeo diretamente do YouTube real via API se já estiver publicado.
+As legendas usam as **marcações reais de tempo** devolvidas pelo Edge TTS, então a palavra destacada acompanha exatamente a voz.
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## ⚙️ Configuração
 
-- **Frontend**: React 18, Vite, Lucide React (Iconografia em Linhas Minimalistas), Vanilla CSS Cyberpunk (`#00ff87` Neon Green).
-- **Backend / Engine**: Node.js (ES Modules), Express.
-- **Banco de Dados & Cloud**: Firebase Admin SDK, Cloud Firestore (Multi-Tenant Schema).
-- **Inteligência Artificial**: Google Generative AI (`@google/generative-ai` - Gemini 1.5 Flash).
-- **Processamento de Mídia**: `node-edge-tts`, `fluent-ffmpeg`, `ffmpeg-static`.
-- **APIs de Terceiros**: `googleapis` (YouTube Data API v3 & OAuth2).
+### 1. Pré-requisitos
+
+- Node.js 18+
+- Projeto no Firebase com Firestore e Storage habilitados
+- Chave da API do Google Gemini
+- Chave da API do Pexels (opcional — sem ela o vídeo sai com fundo sólido)
+
+### 2. Relógio do sistema
+
+> **Verifique isto antes de qualquer coisa.** O JWT da conta de serviço do Firebase e o token do Edge TTS são validados por horário no servidor. Se o relógio da máquina estiver alguns minutos fora, o Firestore responde `16 UNAUTHENTICATED` e o Edge TTS responde `403` — erros que parecem credencial errada, mas são relógio errado.
+>
+> Windows: *Configurações → Hora e Idioma → Data e Hora → "Sincronizar agora"*.
+>
+> O `npm run worker` roda essa verificação sozinho e se recusa a iniciar com o relógio fora de sincronia.
+
+### 3. Variáveis de ambiente
+
+Copie `.env.example` para `.env` na raiz e preencha:
+
+```env
+PORT=3001
+ENCRYPTION_KEY=<string aleatória de 32+ caracteres>
+ENGINE_API_KEY=<segredo compartilhado com a dashboard>
+ALLOWED_ORIGINS=http://localhost:3000
+ENGINE_PUBLIC_URL=http://localhost:3001
+DASHBOARD_URL=http://localhost:3000
+
+GEMINI_API_KEY=
+PEXELS_API_KEY=
+
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+FIREBASE_STORAGE_BUCKET=
+
+# App padrão do sistema — opcional. Serve de fallback para canais que ainda
+# não cadastraram o próprio app. Veja "Conectando as redes sociais".
+YOUTUBE_CLIENT_ID=
+YOUTUBE_CLIENT_SECRET=
+TIKTOK_CLIENT_KEY=
+TIKTOK_CLIENT_SECRET=
+INSTAGRAM_APP_ID=
+INSTAGRAM_APP_SECRET=
+```
+
+E `dashboard/.env` (veja `dashboard/.env.example`):
+
+```env
+VITE_ENGINE_URL=http://localhost:3001
+VITE_ENGINE_API_KEY=<mesmo valor de ENGINE_API_KEY>
+VITE_FIREBASE_API_KEY=...
+```
+
+> `ENCRYPTION_KEY` deriva a chave AES do cofre. **Se ela mudar, todas as credenciais salvas ficam ilegíveis** e as redes precisam ser reconectadas.
+
+### 4. Instalar e rodar
+
+```bash
+npm run install:all
+```
+
+Depois, três terminais:
+
+```bash
+npm run engine
+```
+
+```bash
+npm run worker
+```
+
+```bash
+npm run dashboard
+```
 
 ---
 
-## 📁 Estrutura de Pastas do Projeto
+## 🔌 Conectando as redes sociais
+
+Existem **duas camadas de credencial**, e confundi-las é a maior fonte de dúvida:
+
+| | O que é | Quantas | Onde fica |
+|---|---|---|---|
+| **App** (`client_id` / `client_secret`) | Identifica o **Hermes** perante a plataforma. Não é uma conta. | Uma por app | `.env` (padrão) **ou** cofre do canal (app próprio) |
+| **Conta** (`access_token` / `refresh_token`) | Identifica **cada canal conectado** | Uma por canal | Sempre no cofre do canal, criptografado |
+
+Conectar 50 contas com um `client_id` só funciona — é assim que Buffer e Hootsuite operam. O `.env` não guarda contas.
+
+### Por que dar um app próprio a cada canal
+
+A cota da YouTube Data API é cobrada **por projeto do Google Cloud**, não por conta autorizada: 10.000 unidades/dia, 1.600 por upload. Ou seja:
+
+- **Canais compartilhando um app** → ~6 vídeos/dia **somados entre todos**.
+- **Cada canal com seu projeto** → ~6 vídeos/dia **por canal**.
+
+Para vários canais produzindo em paralelo, o app próprio é o que destrava throughput. O mesmo vale para auditoria: o TikTok audita o *app*, e a permissão `instagram_content_publish` é aprovada por *app*.
+
+Cadastre em **Gerenciador de Canais → (canal) → Conexões de Rede → App próprio deste canal**. Deixando em branco, o canal cai no app do `.env`.
+
+### Redirect URI
+
+No console de cada plataforma, cadastre:
+
+```
+http://localhost:3001/api/oauth/{rede}/callback
+```
+
+onde `{rede}` é `youtube`, `tiktok` ou `instagram`. **A mesma URI serve para todos os canais** — o engine distingue o canal pelo parâmetro `state`, então você não precisa de uma URI por canal.
+
+Depois de trocar o app de um canal, **reconecte a conta**: o token antigo pertence ao app anterior e deixa de ser renovável.
+
+### ⚠️ Modo de teste expira em 7 dias
+
+No Google Cloud, um app com status de publicação **"Testing"** invalida o `refresh_token` a cada **7 dias** — o que quebra a operação autônoma, porque o canal para de publicar até você reconectar na mão. Para rodar sozinho de verdade, cada projeto precisa sair do modo de teste. Como o escopo `youtube.upload` é sensível, isso passa pela verificação do Google.
+
+### O que cada plataforma exige
+
+| Rede | Requisitos | Limite enquanto não aprovado |
+|---|---|---|
+| **YouTube** | Projeto no Google Cloud com YouTube Data API v3; tela OAuth "Externo" com seu e-mail em usuários de teste | Vídeos sobem como **privados** até o app passar pela verificação do Google. Cota: 10.000 unidades/dia, 1.600 por upload (**~6 vídeos/dia**) |
+| **TikTok** | App no TikTok for Developers com escopo `video.publish` | Sem auditoria de conteúdo, posts saem como **SELF_ONLY** (privados) |
+| **Instagram** | Conta **Business ou Creator** vinculada a uma Página do Facebook; permissão `instagram_content_publish` aprovada | Conta pessoal **não publica** via API. Limite de 25 posts/24h |
+
+O envio ao TikTok usa `FILE_UPLOAD` em chunks, então **não é preciso verificar domínio**. O Instagram baixa o vídeo por HTTPS, então o MP4 é publicado no Firebase Storage com URL assinada antes de publicar.
+
+Se um canal não define `targetNetworks`, o worker publica em **todas as redes que estiverem conectadas** naquele canal.
+
+---
+
+## 🗂️ Estrutura
 
 ```
 hermes/
-├── dashboard/                   # Aplicação Web Frontend (React + Vite)
+├── engine/
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── ChannelDetailModal.jsx
-│   │   │   ├── CriarPautaManual.jsx
-│   │   │   ├── CriarVideoQuickModal.jsx
-│   │   │   ├── GerenciadorCanais.jsx
-│   │   │   ├── MonitorProducao.jsx
-│   │   │   └── OAuthConnectionModal.jsx
-│   │   ├── App.jsx
-│   │   ├── firebase.js
-│   │   └── index.css
-│   ├── package.json
-│   └── vercel.json              # Regras de SPA e Deploy Vercel
-├── engine/                      # Motor autônomo backend em Node.js
-│   ├── gerador_pautas_e_roteiro.js
-│   ├── gerador_audio.js
-│   ├── gerador_video.js
-│   ├── upload_youtube.js
-│   ├── worker.js                # Daemon de esteira em tempo real
-│   └── src/services/
-│       ├── deleteService.js
-│       └── oauthService.js
-├── output/                      # Diretório físico de saída dos arquivos
-│   ├── audios/                  # Arquivos .mp3
-│   ├── subtitles/               # Arquivos .vtt
-│   └── videos/                  # Arquivos .mp4
-├── .env                         # Variáveis de ambiente secretas
-├── package.json
-└── README.md
+│   │   ├── config/          env, firebase, preflight (checagem de relógio/chaves)
+│   │   ├── services/
+│   │   │   ├── geminiService.js         roteiro estruturado
+│   │   │   ├── ttsService.js            locução + marcações de tempo
+│   │   │   ├── subtitleService.js       .ass com destaque por palavra
+│   │   │   ├── mediaCollectorService.js clipes do Pexels
+│   │   │   ├── renderEngine.js          FFmpeg 1080x1920
+│   │   │   ├── storageService.js        upload + URL assinada
+│   │   │   ├── vaultService.js          AES-256-GCM
+│   │   │   ├── oauthService.js          troca code→token das 3 redes
+│   │   │   ├── pipelineOrchestrator.js  a esteira completa
+│   │   │   └── uploaders/               youtube, tiktok, instagram
+│   │   └── server.js        API HTTP
+│   ├── worker.js            daemon da esteira
+│   ├── test/                testes (render offline não precisa de rede)
+│   └── legacy/              primeira geração, não executada
+├── dashboard/
+│   └── src/
+│       ├── components/
+│       └── lib/             engineApi.js, jobStatus.js
+├── n8n-configs/             agendamento opcional via n8n
+└── output/                  MP4 renderizados
 ```
 
 ---
 
-## ⚙️ Como Configurar e Executar
+## 🧪 Testes
 
-### 1. Pré-requisitos
-- Node.js v18 ou superior instalado.
-- Chave de API do **Google Gemini** (`GEMINI_API_KEY`).
-- Credenciais da conta de serviço do **Firebase Admin** (`serviceAccountKey.json` ou variáveis no `.env`).
-
-### 2. Variáveis de Ambiente (`.env` na raiz)
-Crie um arquivo `.env` na raiz do projeto `hermes`:
-
-```env
-FIREBASE_PROJECT_ID=hermes-ca93c
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@hermes-ca93c.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-
-GEMINI_API_KEY=sua_chave_gemini_aqui
-YOUTUBE_CLIENT_ID=seu_client_id_google.apps.googleusercontent.com
-YOUTUBE_CLIENT_SECRET=seu_client_secret_google
-```
-
-### 3. Instalar Dependências
 ```bash
-# Na raiz do projeto
-npm install
-
-# Na pasta da dashboard
-cd dashboard && npm install
+npm test
 ```
 
-### 4. Executar a Dashboard de Controle (Localhost)
-```bash
-cd dashboard
-npm run dev
-```
-Acesse em: `http://localhost:5173`.
+Cobre criptografia do cofre, geração de legendas e **renderização real com FFmpeg** (sem rede). O teste que depende do Edge TTS é pulado automaticamente quando o relógio está fora de sincronia.
 
-### 5. Executar o Worker Autônomo da Esteira
-Em um segundo terminal na raiz do projeto:
-```bash
-node engine/worker.js
-```
+---
+
+## 🔒 Segurança
+
+- Tokens e chaves ficam criptografados (AES-256-GCM) no Firestore; nada trafega em claro.
+- As rotas de escrita exigem o header `x-api-key`.
+- O CORS aceita apenas as origens em `ALLOWED_ORIGINS`.
+- Não existe rota de descriptografia: os segredos só são abertos dentro do worker.
 
 ---
 
 ## 📝 Licença
 
-Este projeto é um software proprietário desenvolvido para a fábrica de conteúdo autônoma **Hermes**. Todos os direitos reservados.
+Software proprietário da fábrica de conteúdo **Hermes**. Todos os direitos reservados.

@@ -3,68 +3,82 @@ import fs from 'fs-extra';
 import path from 'path';
 
 /**
- * Searches and downloads vertical stock video clips from Pexels API.
+ * Downloads one vertical stock clip per visual query from Pexels.
+ *
+ * One clip per script section keeps the background changing through the video;
+ * the previous single-query version made every short look identical.
+ *
  * @param {Object} options
- * @param {string} options.query Search query term in English (e.g., 'cyberpunk city')
- * @param {string} options.outputDirPath Target directory to save MP4 files
- * @param {string} options.pexelsApiKey Pexels API key
- * @param {number} options.count Number of clips to download (default: 2)
- * @returns {Promise<Array<string>>} List of downloaded local MP4 file paths
+ * @param {Array<string>} options.queries English search terms, one per section
+ * @param {string} options.outputDirPath Directory to save the MP4s
+ * @param {string} options.pexelsApiKey
+ * @returns {Promise<Array<string>>} Local paths of the downloaded clips
  */
-export async function fetchStockVideos({ query, outputDirPath, pexelsApiKey, count = 2 }) {
-  if (!fs.existsSync(outputDirPath)) {
-    fs.mkdirSync(outputDirPath, { recursive: true });
+export async function fetchStockVideos({ queries = [], outputDirPath, pexelsApiKey }) {
+  await fs.ensureDir(outputDirPath);
+
+  if (!pexelsApiKey) {
+    console.warn('[MediaCollector] PEXELS_API_KEY ausente — o vídeo usará fundo sólido.');
+    return [];
   }
 
   const downloadedFiles = [];
+  const usedVideoIds = new Set();
 
-  if (!pexelsApiKey) {
-    console.warn('[MediaCollector] No Pexels API Key provided. Returning fallback placeholder video.');
-    return downloadedFiles;
-  }
+  for (const [index, query] of queries.entries()) {
+    try {
+      const response = await axios.get('https://api.pexels.com/videos/search', {
+        headers: { Authorization: pexelsApiKey },
+        params: {
+          query: query || 'abstract technology background',
+          orientation: 'portrait',
+          per_page: 8,
+          size: 'medium'
+        },
+        timeout: 20000
+      });
 
-  try {
-    const response = await axios.get('https://api.pexels.com/videos/search', {
-      headers: { Authorization: pexelsApiKey },
-      params: {
-        query: query || 'abstract tech background',
-        orientation: 'portrait',
-        per_page: count + 3,
-        size: 'medium'
+      const candidates = (response.data.videos || []).filter(v => !usedVideoIds.has(v.id));
+      if (candidates.length === 0) {
+        console.warn(`[MediaCollector] Nenhum clipe novo para "${query}".`);
+        continue;
       }
-    });
 
-    const videos = response.data.videos || [];
-    let downloadedCount = 0;
+      const video = candidates[0];
+      usedVideoIds.add(video.id);
 
-    for (const video of videos) {
-      if (downloadedCount >= count) break;
+      // Prefer a genuinely portrait rendition, and cap resolution so the
+      // download stays fast — we downscale to 1080x1920 anyway.
+      const portraitFiles = (video.video_files || [])
+        .filter(f => f.width && f.height && f.height > f.width)
+        .sort((a, b) => a.height - b.height);
+      const videoFile =
+        portraitFiles.find(f => f.height >= 1280) || portraitFiles[0] || video.video_files?.[0];
 
-      // Find vertical portrait file link (aspect ratio 9:16 or portrait height > width)
-      const videoFile = video.video_files.find(f => f.width && f.height && f.height > f.width) || video.video_files[0];
-      if (!videoFile || !videoFile.link) continue;
+      if (!videoFile?.link) continue;
 
-      const filename = `pexels_${video.id}_${downloadedCount + 1}.mp4`;
-      const filePath = path.join(outputDirPath, filename);
-
-      const fileStream = fs.createWriteStream(filePath);
-      const videoDownload = await axios({
+      const filePath = path.join(outputDirPath, `pexels_${index}_${video.id}.mp4`);
+      const download = await axios({
         method: 'get',
         url: videoFile.link,
-        responseType: 'stream'
+        responseType: 'stream',
+        timeout: 120000
       });
 
       await new Promise((resolve, reject) => {
-        videoDownload.data.pipe(fileStream);
+        const fileStream = fs.createWriteStream(filePath);
+        download.data.pipe(fileStream);
         fileStream.on('finish', resolve);
         fileStream.on('error', reject);
+        download.data.on('error', reject);
       });
 
       downloadedFiles.push(filePath);
-      downloadedCount++;
+      console.log(`[MediaCollector] "${query}" → ${path.basename(filePath)}`);
+    } catch (error) {
+      // A missing background clip degrades the video but must not kill the job
+      console.error(`[MediaCollector] Falha buscando "${query}":`, error.message);
     }
-  } catch (error) {
-    console.error(`[MediaCollector] Error fetching video clips from Pexels for query '${query}':`, error.message);
   }
 
   return downloadedFiles;

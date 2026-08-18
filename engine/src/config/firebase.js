@@ -2,22 +2,20 @@ import admin from 'firebase-admin';
 import { config } from './env.js';
 
 if (!admin.apps.length) {
-  if (config.firebase.projectId && config.firebase.clientEmail && config.firebase.privateKey) {
+  const { projectId, clientEmail, privateKey, storageBucket } = config.firebase;
+
+  if (projectId && clientEmail && privateKey) {
     admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: config.firebase.projectId,
-        clientEmail: config.firebase.clientEmail,
-        privateKey: config.firebase.privateKey
-      }),
-      storageBucket: config.firebase.storageBucket
+      credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+      storageBucket
     });
   } else {
-    // Fallback initialize for dev / emulator
-    admin.initializeApp({
-      projectId: 'hermes-dev'
-    });
+    throw new Error(
+      'Credenciais do Firebase Admin ausentes. Defina FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY no .env.'
+    );
   }
 }
 
 export const db = admin.firestore();
 export const storage = admin.storage();
+export const FieldValue = admin.firestore.FieldValue;

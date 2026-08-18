@@ -1,36 +1,64 @@
-import { MsEdgeTTS, OUTPUT_FORMAT } from 'node-edge-tts';
+import { EdgeTTS } from 'node-edge-tts';
 import path from 'path';
 import fs from 'fs-extra';
 
 /**
- * Synthesizes text into MP3 audio using Microsoft Edge TTS.
- * @param {Object} options
- * @param {string} options.text Full text script to convert to speech
- * @param {string} options.outputFilePath Output file path for MP3
- * @param {string} options.voice Voice name (e.g., 'pt-BR-AntonioNeural', 'pt-BR-FranciscaNeural')
- * @param {string} options.rate Speed adjustment (e.g. '+10%', '+0%')
- * @returns {Promise<string>} Output MP3 file path
+ * Synthesizes narration with Microsoft Edge's neural TTS.
+ *
+ * With `saveSubtitles`, Edge also returns word-level timing metadata, which we
+ * read back and hand to the subtitle generator. Those are the voice's actual
+ * timings, so captions stay locked to the audio instead of drifting against
+ * estimated durations.
+ *
+ * @returns {Promise<{audioPath: string, cues: Array<{part: string, start: number, end: number}>}>}
+ *          Cue times are in milliseconds.
  */
 export async function generateSpeech({
   text,
   outputFilePath,
   voice = 'pt-BR-AntonioNeural',
-  rate = '+10%'
+  lang = 'pt-BR',
+  rate = '+10%',
+  pitch = '+0Hz',
+  volume = '+0%'
 }) {
-  const dir = path.dirname(outputFilePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  if (!text || !text.trim()) {
+    throw new Error('Texto da narração está vazio.');
   }
 
-  const tts = new MsEdgeTTS();
-  await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+  await fs.ensureDir(path.dirname(outputFilePath));
 
-  // Synthesize audio to output stream/file
-  const filePath = await tts.toFile(outputFilePath, text, {
-    rate: rate,
-    pitch: '+0Hz',
-    volume: '+0%'
+  const tts = new EdgeTTS({
+    voice,
+    lang,
+    outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
+    saveSubtitles: true,
+    rate,
+    pitch,
+    volume,
+    timeout: 60000
   });
 
-  return filePath;
+  await tts.ttsPromise(text, outputFilePath);
+
+  if (!(await fs.pathExists(outputFilePath))) {
+    throw new Error(`EdgeTTS não gerou o arquivo de áudio em ${outputFilePath}`);
+  }
+  const { size } = await fs.stat(outputFilePath);
+  if (size === 0) {
+    throw new Error('EdgeTTS gerou um arquivo de áudio vazio.');
+  }
+
+  // Edge writes the timings alongside the audio as "<audioPath>.json"
+  let cues = [];
+  const cuesPath = `${outputFilePath}.json`;
+  try {
+    if (await fs.pathExists(cuesPath)) {
+      cues = await fs.readJson(cuesPath);
+    }
+  } catch (err) {
+    console.warn('[TTS] Não foi possível ler as marcações de tempo:', err.message);
+  }
+
+  return { audioPath: outputFilePath, cues };
 }

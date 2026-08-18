@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc } from 'firebase/firestore';
-import { Sparkles, Layers, Film, CheckCircle2, Zap, Cpu } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { Sparkles, Layers, Film, CheckCircle2, Zap, Cpu, AlertCircle } from 'lucide-react';
+import { triggerVideoJob } from '../lib/engineApi';
 
 export default function CriarPautaManual() {
   const [canais, setCanais] = useState([]);
@@ -11,6 +12,7 @@ export default function CriarPautaManual() {
   const [quantidadePartes, setQuantidadePartes] = useState('3');
   const [salvando, setSalvando] = useState(false);
   const [sucessoMsg, setSucessoMsg] = useState(null);
+  const [erroMsg, setErroMsg] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'tenants'), (snapshot) => {
@@ -34,64 +36,45 @@ export default function CriarPautaManual() {
 
     setSalvando(true);
     setSucessoMsg(null);
+    setErroMsg(null);
 
     try {
       if (isMiniseries) {
         const numPartes = parseInt(quantidadePartes, 10);
-        const serieId = `serie_${Date.now()}`;
 
+        // One queued job per episode. The engine's Gemini stage writes the
+        // actual roteiro; here we only describe the episode's role in the arc.
         for (let i = 1; i <= numPartes; i++) {
           const isLast = i === numPartes;
+          const instruction = [
+            `Este é o episódio ${i} de uma minissérie de ${numPartes} partes sobre "${tema.trim()}".`,
+            `Inclua "Parte ${i}" no título.`,
+            'Abra com um gancho forte nos primeiros 3 segundos.',
+            isLast
+              ? 'Encerre com uma conclusão satisfatória e um convite para se inscrever no canal.'
+              : `Encerre obrigatoriamente com um cliffhanger dramático chamando o público para a Parte ${i + 1}.`
+          ].join(' ');
 
-          const parteScript = {
-            ordem: i,
-            parte: `Parte ${i} de ${numPartes}`,
-            titulo: `${tema.trim()} - Parte ${i} #Shorts`,
-            descricao: `Parte ${i} de ${numPartes} da minissérie sobre ${tema.trim()}.`,
-            tags: ['#shorts', '#minisserie', `#parte${i}`],
-            roteiro_locucao: `[GANCHO DOS 3 SEGUNDOS]: O que você nunca soube sobre ${tema.trim()} vai te deixar impressionado... [CONTEÚDO PRINCIPAL DA PARTE ${i}]... ${
-              isLast 
-                ? 'E foi assim que a história se encerrou. Inscreva-se para mais episódios!' 
-                : `Mas o desfecho que veio em seguida foi inacreditável... Siga o canal para a Parte ${i + 1}!`
-            }`
-          };
-
-          if (db) {
-            await addDoc(collection(db, 'video_jobs'), {
-              tenantId: selectedTenant,
-              serieId,
-              ordem: i,
-              isMiniseries: true,
-              totalPartes: numPartes,
-              status: 'AUDIO_GEN',
-              script: parteScript,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            });
-          }
+          await triggerVideoJob({
+            tenantId: selectedTenant,
+            customTopic: tema.trim(),
+            customInstruction: instruction
+          });
         }
 
-        setSucessoMsg(`Minissérie encadeada em ${numPartes} Partes criada no Firestore com SUCESSO!`);
+        setSucessoMsg(`Minissérie de ${numPartes} partes enfileirada na esteira de produção!`);
       } else {
-        const pautaDoc = {
-          titulo: tema.trim(),
-          conceito: 'Pauta manual gerada pela Dashboard.',
-          status: 'pendente',
-          isMiniseries: false,
-          createdAt: new Date().toISOString()
-        };
-
-        if (db) {
-          await addDoc(collection(db, 'tenants', selectedTenant, 'pautas'), pautaDoc);
-        }
-
-        setSucessoMsg('Pauta manual enviada com SUCESSO para a esteira da IA!');
+        const { jobId } = await triggerVideoJob({
+          tenantId: selectedTenant,
+          customTopic: tema.trim()
+        });
+        setSucessoMsg(`Job ${jobId} enfileirado. Acompanhe no Monitor de Produção.`);
       }
 
       setTema('');
-      setTimeout(() => setSucessoMsg(null), 5000);
+      setTimeout(() => setSucessoMsg(null), 6000);
     } catch (err) {
-      alert(`Erro ao criar pauta: ${err.message}`);
+      setErroMsg(err.message);
     } finally {
       setSalvando(false);
     }
@@ -199,9 +182,19 @@ export default function CriarPautaManual() {
             )}
           </div>
 
+          {erroMsg && (
+            <div style={{
+              background: 'rgba(255, 71, 87, 0.08)', border: '1px solid rgba(255, 71, 87, 0.3)',
+              padding: '12px 14px', borderRadius: '10px', display: 'flex', gap: '10px', alignItems: 'flex-start'
+            }}>
+              <AlertCircle size={18} style={{ color: '#ff4757', flexShrink: 0, marginTop: '1px' }} />
+              <span style={{ fontSize: '12px', lineHeight: 1.5 }}>{erroMsg}</span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
             <button type="submit" className="gradient-btn" disabled={salvando} style={{ height: '48px', padding: '0 28px' }}>
-              {salvando ? 'Processando no Gemini...' : isMiniseries ? 'Gerar Minissérie Encadeada' : 'Cadastrar Pauta Manual'}
+              {salvando ? 'Enfileirando...' : isMiniseries ? 'Gerar Minissérie Encadeada' : 'Enfileirar Produção'}
             </button>
 
             {sucessoMsg && (

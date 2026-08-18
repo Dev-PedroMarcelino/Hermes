@@ -9,24 +9,33 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
  * @param {string} options.language Language (default: "pt-BR")
  * @returns {Promise<Object>} Structured script JSON
  */
-export async function generateVideoScript({ apiKey, niche, brandIdentity, language = 'pt-BR', topic = null }) {
+export async function generateVideoScript({
+  apiKey,
+  niche,
+  brandIdentity,
+  language = 'pt-BR',
+  topic = null,
+  instruction = null,
+  recentTitles = []
+}) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  // Using gemini-1.5-flash or gemini-2.0-flash
   const model = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.0-flash',
     generationConfig: {
       responseMimeType: 'application/json'
     }
   });
 
   const prompt = `
-Você é um roteirista profissional de conteúdo viral para redes sociais curtas (YouTube Shorts, TikTok, Instagram Reels, Kwai).
+Você é um roteirista profissional de conteúdo viral para redes sociais curtas (YouTube Shorts, TikTok, Instagram Reels).
 Crie um roteiro de vídeo curto de ALTA RETENÇÃO (duração total ideal entre 30 a 50 segundos).
 
 - Nicho do Canal: ${niche}
 - Identidade da Marca: ${brandIdentity}
 - Idioma: ${language}
 ${topic ? `- Tópico Específico: ${topic}` : '- Tópico: Escolha um tópico surpreendente, curioso e de alto engajamento dentro do nicho.'}
+${instruction ? `- Orientação adicional do operador (siga à risca): ${instruction}` : ''}
+${recentTitles.length ? `\nTEMAS JÁ PUBLICADOS NESTE CANAL — NÃO REPITA NENHUM DELES NEM VARIAÇÕES PRÓXIMAS:\n${recentTitles.map(t => `- ${t}`).join('\n')}` : ''}
 
 RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 {
@@ -53,11 +62,25 @@ REGRAS RÍGIDAS:
   const result = await model.generateContent(prompt);
   const responseText = result.response.text();
 
+  let scriptJson;
   try {
     const cleanedText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const scriptJson = JSON.parse(cleanedText);
-    return scriptJson;
+    scriptJson = JSON.parse(cleanedText);
   } catch (error) {
-    throw new Error(`Failed to parse Gemini response as JSON: ${error.message}. Response was: ${responseText}`);
+    throw new Error(`Resposta do Gemini não é JSON válido: ${error.message}. Resposta: ${responseText.slice(0, 500)}`);
   }
+
+  // Downstream stages (TTS, subtitles, render) all assume these exist — fail
+  // here with a clear message rather than midway through rendering.
+  if (!scriptJson.title || !scriptJson.hook) {
+    throw new Error('Roteiro do Gemini veio sem "title" ou "hook".');
+  }
+  if (!Array.isArray(scriptJson.sections) || scriptJson.sections.length === 0) {
+    throw new Error('Roteiro do Gemini veio sem "sections".');
+  }
+  if (!Array.isArray(scriptJson.hashtags)) {
+    scriptJson.hashtags = ['#shorts'];
+  }
+
+  return scriptJson;
 }

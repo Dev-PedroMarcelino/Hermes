@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { config } from '../config/env.js';
+import { config, assertEncryptionKey } from '../config/env.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -15,6 +15,7 @@ function getDerivedKey(secretKey) {
  */
 export function encryptCredential(text) {
   if (!text) return '';
+  assertEncryptionKey();
   const iv = crypto.randomBytes(IV_LENGTH);
   const key = getDerivedKey(config.encryptionKey);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
@@ -38,6 +39,7 @@ export function decryptCredential(encryptedText) {
   const parts = encryptedText.split(':');
   if (parts.length !== 3) return encryptedText;
 
+  assertEncryptionKey();
   const [ivHex, authTagHex, encryptedDataHex] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
