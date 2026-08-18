@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import readline from 'readline';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,151 +39,171 @@ const SCOPES = [
 
 const TOKEN_PATH = path.resolve(__dirname, 'tokens.json');
 
-async function obterClienteOAuth2() {
-  const clientId = process.env.YOUTUBE_CLIENT_ID || 'DEMO_CLIENT_ID';
-  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET || 'DEMO_CLIENT_SECRET';
+/**
+ * Autenticação OAuth2 Real para a API do YouTube v3
+ */
+async function obterClienteOAuth2Real() {
+  const clientId = process.env.YOUTUBE_CLIENT_ID;
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
   const redirectUri = process.env.YOUTUBE_REDIRECT_URI || 'urn:ietf:wg:oauth:2.0:oob';
+
+  if (!clientId || !clientSecret) {
+    throw new Error('❌ ERRO CRÍTICO: YOUTUBE_CLIENT_ID e YOUTUBE_CLIENT_SECRET devem estar configurados no arquivo .env!');
+  }
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 
+  // 1. Se tokens.json existir no disco, carrega e usa
   if (fs.existsSync(TOKEN_PATH)) {
     const tokenContent = fs.readFileSync(TOKEN_PATH, 'utf8');
     try {
       const tokens = JSON.parse(tokenContent);
       oauth2Client.setCredentials(tokens);
+
+      oauth2Client.on('tokens', (newTokens) => {
+        const updated = { ...tokens, ...newTokens };
+        fs.writeFileSync(TOKEN_PATH, JSON.stringify(updated, null, 2));
+      });
+
       return oauth2Client;
     } catch (e) {
-      console.warn('⚠️ tokens.json corrompido ou inválido.');
+      console.warn('⚠️ tokens.json inválido. Reiniciando autenticação...');
     }
   }
 
-  const dummyTokens = {
-    access_token: 'dummy_youtube_access_token',
-    refresh_token: 'dummy_youtube_refresh_token',
-    scope: SCOPES.join(' '),
-    token_type: 'Bearer',
-    expiry_date: Date.now() + 3600 * 1000
-  };
+  // 2. Se tokens.json NÃO existir, gera a URL no terminal e aguarda entrada via readline
+  console.log('\n=======================================================');
+  console.log('🔑 AUTENTICAÇÃO OAUTH2 DO YOUTUBE REQUERIDA');
+  console.log('=======================================================');
 
-  fs.writeFileSync(TOKEN_PATH, JSON.stringify(dummyTokens, null, 2));
-  oauth2Client.setCredentials(dummyTokens);
+  const authUrl = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES,
+    prompt: 'consent'
+  });
+
+  console.log('\n1. Abra este link no seu navegador para logar na sua conta do Google/YouTube:');
+  console.log(`\n👉 ${authUrl}\n`);
+  console.log('2. Faça o login, autorize o aplicativo e COPIE o código de autorização exibido.');
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const code = await new Promise((resolve) => {
+    rl.question('\nPaste authorization code here: ', (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+
+  if (!code) {
+    throw new Error('❌ Nenhum código de autorização foi fornecido.');
+  }
+
+  console.log('\n🔄 Solicitando tokens de acesso da API do Google...');
+  const { tokens } = await oauth2Client.getToken(code);
+  oauth2Client.setCredentials(tokens);
+
+  fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+  console.log(`✅ Tokens OAuth2 salvos com SUCESSO em: ${TOKEN_PATH}`);
+
   return oauth2Client;
 }
 
+/**
+ * Upload Real no YouTube Shorts via API v3
+ */
 export async function processarUploadDoProximoJob() {
   console.log('=======================================================');
-  console.log('🚀 Hermes Content Factory - Módulo de Upload (YouTube Shorts)');
+  console.log('🚀 HERMES REAL UPLOAD: YouTube Shorts (googleapis v3)');
   console.log('=======================================================');
 
-  let jobDoc = null;
-
-  if (db) {
-    console.log('1. Buscando documento em /video_jobs com status "READY_TO_UPLOAD"...');
-    const snap = await db.collection('video_jobs')
-      .where('status', '==', 'READY_TO_UPLOAD')
-      .get();
-
-    const docs = snap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }))
-      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-
-    for (const d of docs) {
-      if (d.assets?.finalVideoUrl && fs.existsSync(d.assets.finalVideoUrl)) {
-        jobDoc = d;
-        break;
-      }
-    }
+  if (!db) {
+    throw new Error('❌ Conexão com o Cloud Firestore não foi inicializada.');
   }
 
-  if (!jobDoc) {
-    throw new Error('Nenhum Job com status READY_TO_UPLOAD e vídeo final válido foi encontrado no Firestore.');
+  console.log('1. Buscando o documento em /video_jobs com status "READY_TO_UPLOAD"...');
+  const snap = await db.collection('video_jobs')
+    .where('status', '==', 'READY_TO_UPLOAD')
+    .get();
+
+  if (snap.empty) {
+    throw new Error('❌ Nenhum documento com status "READY_TO_UPLOAD" foi encontrado em /video_jobs.');
   }
 
+  const docs = snap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }))
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+
+  const jobDoc = docs[0];
   const jobId = jobDoc.id;
   const videoPath = jobDoc.assets?.finalVideoUrl;
   const script = jobDoc.script || {};
 
-  const titulo = script.titulo || `Vídeo Curto #Shorts ${jobId}`;
+  if (!videoPath || !fs.existsSync(videoPath)) {
+    throw new Error(`❌ Arquivo de vídeo final MP4 não existe no caminho: ${videoPath}`);
+  }
+
+  const titulo = script.titulo || `Shorts ${jobId}`;
   const descricao = script.descricao || 'Vídeo gerado automaticamente pela Hermes Content Factory.';
-  const tags = script.tags || ['#shorts', '#hermes', '#conteudo'];
-
-  console.log(`📌 Job Selecionado: [ID: ${jobId}]`);
-  console.log(`🎬 Arquivo de Vídeo Local: ${videoPath}`);
-
+  const tags = script.tags || ['#shorts', '#viral'];
   const tituloFinal = titulo.toLowerCase().includes('#shorts') ? titulo : `${titulo} #Shorts`;
 
-  console.log('\n2. Obtendo credenciais OAuth2 do YouTube...');
-  const authClient = await obterClienteOAuth2();
+  console.log(`📌 Job Selecionado: [ID: ${jobId}]`);
+  console.log(`🎬 Arquivo MP4: ${videoPath}`);
+  console.log(`📝 Título: "${tituloFinal}"`);
+
+  console.log('\n2. Inicializando cliente OAuth2 do YouTube...');
+  const authClient = await obterClienteOAuth2Real();
   const youtube = google.youtube({ version: 'v3', auth: authClient });
 
-  // Cria ID único para cada vídeo gerado pelo motor
-  let videoId = `shorts_${jobId.replace('job_', '')}`;
-  let videoUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(titulo)}`;
+  console.log('\n3. Executando youtube.videos.insert real com o buffer do arquivo MP4...');
 
-  try {
-    const response = await youtube.videos.insert({
-      part: 'snippet,status',
-      requestBody: {
-        snippet: {
-          title: tituloFinal.slice(0, 100),
-          description: `${descricao}\n\n${tags.join(' ')}`,
-          tags: tags.map(t => t.replace('#', '')),
-          categoryId: '28'
-        },
-        status: {
-          privacyStatus: 'public',
-          selfDeclaredMadeForKids: false
-        }
+  const response = await youtube.videos.insert({
+    part: 'snippet,status',
+    requestBody: {
+      snippet: {
+        title: tituloFinal.slice(0, 100),
+        description: `${descricao}\n\n${tags.join(' ')}`,
+        tags: tags.map(t => t.replace('#', '')),
+        categoryId: '28'
       },
-      media: {
-        body: fs.createReadStream(videoPath)
+      status: {
+        privacyStatus: 'public',
+        selfDeclaredMadeForKids: false
       }
-    });
-
-    if (response.data && response.data.id) {
-      videoId = response.data.id;
-      videoUrl = `https://www.youtube.com/shorts/${videoId}`;
-      console.log(`✅ Upload REAL realizado com SUCESSO no YouTube Shorts!`);
-      console.log(`   └─ Video ID: ${videoId}`);
-      console.log(`   └─ URL Pública: ${videoUrl}`);
+    },
+    media: {
+      body: fs.createReadStream(videoPath)
     }
-  } catch (uploadErr) {
-    console.warn(`⚠️ Nota no envio da API do YouTube: ${uploadErr.message}`);
+  });
+
+  if (!response.data || !response.data.id) {
+    throw new Error('❌ Falha na resposta da API do YouTube. O vídeo não retornou um ID válido.');
   }
+
+  const videoId = response.data.id;
+  const videoUrl = `https://www.youtube.com/shorts/${videoId}`;
+
+  console.log(`\n✅ Upload REAL realizado com SUCESSO no YouTube Shorts!`);
+  console.log(`   └─ Video ID: ${videoId}`);
+  console.log(`   └─ URL Pública: ${videoUrl}`);
 
   // 4. Atualiza o status no Firestore para PUBLISHED
-  if (db && jobDoc.ref) {
-    console.log('\n4. Atualizando o status do Job no Cloud Firestore para "PUBLISHED"...');
-    await jobDoc.ref.update({
+  console.log('\n4. Atualizando o documento no Firestore para "PUBLISHED"...');
+  await jobDoc.ref.update({
+    status: 'PUBLISHED',
+    publishedVideoUrl: videoUrl,
+    'distributionLog.youtube': {
       status: 'PUBLISHED',
-      publishedVideoUrl: videoUrl,
-      'distributionLog.youtube': {
-        status: 'PUBLISHED',
-        videoId: videoId,
-        videoUrl: videoUrl,
-        publishedAt: new Date().toISOString()
-      },
-      'distributionLog.tiktok': {
-        status: 'PUBLISHED',
-        videoUrl: 'https://www.tiktok.com/search?q=' + encodeURIComponent(titulo),
-        publishedAt: new Date().toISOString()
-      },
-      'distributionLog.instagram': {
-        status: 'PUBLISHED',
-        videoUrl: 'https://www.instagram.com/explore/tags/' + (tags[0] ? tags[0].replace('#', '') : 'shorts'),
-        publishedAt: new Date().toISOString()
-      },
-      publishedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
+      videoId: videoId,
+      videoUrl: videoUrl,
+      publishedAt: new Date().toISOString()
+    },
+    publishedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
 
-    console.log(`✅ Documento do Job [${jobId}] atualizado com SUCESSO no Firestore!`);
-    console.log(`   └─ Novo Status: 'PUBLISHED'`);
-    console.log(`   └─ URL Pública Gravada: '${videoUrl}'`);
-  }
-
-  console.log('\n=======================================================');
-  console.log('🎉 VÍDEO PUBLICADO E REGISTRADO NO FIRESTORE!');
-  console.log('=======================================================');
+  console.log(`✅ Documento do Job [${jobId}] atualizado com SUCESSO no Firestore!`);
+  console.log(`   └─ Novo Status: 'PUBLISHED'`);
+  console.log(`   └─ URL Salva: '${videoUrl}'`);
 
   return { jobId, videoId, videoUrl };
 }
@@ -191,7 +212,8 @@ async function main() {
   try {
     await processarUploadDoProximoJob();
   } catch (err) {
-    console.error('\n❌ Erro no Módulo de Upload:', err.message);
+    console.error('❌ Erro no Módulo de Upload do YouTube:', err.message);
+    process.exit(1);
   }
 }
 
