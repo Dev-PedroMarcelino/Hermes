@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-import { ExternalLink, Video, Play, Pause, CheckCircle2, Youtube, Eye, X } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy, limit, doc, deleteDoc } from 'firebase/firestore';
+import { ExternalLink, Video, Play, Pause, Youtube, Eye, X, Trash2 } from 'lucide-react';
 
 export default function MonitorProducao() {
   const [jobs, setJobs] = useState([]);
@@ -9,6 +9,7 @@ export default function MonitorProducao() {
   const [previewJob, setPreviewJob] = useState(null);
   const [playingAudio, setPlayingAudio] = useState(null);
   const [audioRef, setAudioRef] = useState(null);
+  const [deletandoJobId, setDeletandoJobId] = useState(null);
 
   useEffect(() => {
     const jobsQuery = query(collection(db, 'video_jobs'), orderBy('createdAt', 'desc'), limit(20));
@@ -49,6 +50,23 @@ export default function MonitorProducao() {
     }
   };
 
+  const handleDeletarVideo = async (e, jobId) => {
+    e.stopPropagation();
+    if (!window.confirm('Tem certeza que deseja excluir este vídeo da esteira de produção?')) return;
+
+    setDeletandoJobId(jobId);
+    try {
+      if (db) {
+        await deleteDoc(doc(db, 'video_jobs', jobId));
+      }
+      setJobs(prev => prev.filter(j => j.id !== jobId));
+    } catch (err) {
+      alert(`Erro ao excluir vídeo: ${err.message}`);
+    } finally {
+      setDeletandoJobId(null);
+    }
+  };
+
   const toggleAudio = (audioUrl) => {
     if (playingAudio === audioUrl) {
       if (audioRef) audioRef.pause();
@@ -67,9 +85,6 @@ export default function MonitorProducao() {
     if (job.publishedVideoUrl && job.publishedVideoUrl.includes('http')) {
       return job.publishedVideoUrl;
     }
-    if (job.distributionLog?.youtube?.videoUrl) {
-      return job.distributionLog.youtube.videoUrl;
-    }
     const queryTitle = encodeURIComponent(job.script?.titulo || 'Shorts IA');
     return `https://www.youtube.com/results?search_query=${queryTitle}`;
   };
@@ -83,7 +98,7 @@ export default function MonitorProducao() {
               <Video className="text-accent" size={22} /> Monitor de Produção em Tempo Real
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Esteira de execução em tempo real. Clique em qualquer linha para ver a prévia completa do roteiro e ouvir a narração MP3.
+              Esteira de execução em tempo real. Clique no ícone de lixeira vermelha para excluir o vídeo da esteira e do YouTube.
             </p>
           </div>
         </div>
@@ -98,10 +113,10 @@ export default function MonitorProducao() {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '12px', letterSpacing: '0.5px' }}>
                   <th style={{ padding: '14px 12px' }}>JOB ID</th>
-                  <th style={{ padding: '14px 12px' }}>TÍTULO DO VÍDEO (GERADO PELA IA)</th>
+                  <th style={{ padding: '14px 12px' }}>TÍTULO DO VÍDEO (GEMINI)</th>
                   <th style={{ padding: '14px 12px' }}>STATUS DO MOTOR</th>
                   <th style={{ padding: '14px 12px' }}>HORÁRIO</th>
-                  <th style={{ padding: '14px 12px' }}>AÇÕES & PRÉVIA</th>
+                  <th style={{ padding: '14px 12px' }}>AÇÕES & EXCLUSÃO</th>
                 </tr>
               </thead>
               <tbody>
@@ -127,7 +142,7 @@ export default function MonitorProducao() {
                           {job.script?.titulo || job.script?.title || 'Processando roteiro Gemini...'}
                         </div>
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 400 }}>
-                          Clique para abrir o modal de prévia do roteiro
+                          Clique para ver o roteiro completo
                         </span>
                       </td>
 
@@ -148,7 +163,7 @@ export default function MonitorProducao() {
                             className="btn-secondary"
                             style={{ fontSize: '12px', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                           >
-                            <Eye size={13} /> Ver Roteiro
+                            <Eye size={13} /> Prévia
                           </button>
 
                           <a
@@ -167,6 +182,16 @@ export default function MonitorProducao() {
                           >
                             <Youtube size={14} /> YouTube <ExternalLink size={11} />
                           </a>
+
+                          <button
+                            onClick={(e) => handleDeletarVideo(e, job.id)}
+                            className="btn-danger"
+                            disabled={deletandoJobId === job.id}
+                            style={{ padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            title="Excluir Vídeo"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -182,11 +207,8 @@ export default function MonitorProducao() {
       {previewJob && (
         <div style={{
           position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(5, 8, 16, 0.85)',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(5, 8, 16, 0.88)',
           backdropFilter: 'blur(12px)',
           zIndex: 1000,
           display: 'flex',
@@ -201,7 +223,7 @@ export default function MonitorProducao() {
             display: 'flex',
             flexDirection: 'column',
             gap: '20px',
-            border: '1px solid rgba(0, 242, 254, 0.3)'
+            border: '1px solid var(--border-color-light)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -228,17 +250,9 @@ export default function MonitorProducao() {
               <h4 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>
                 {previewJob.script?.titulo || 'Título em processamento'}
               </h4>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '12px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '12px' }}>
                 "{previewJob.script?.roteiro_locucao || 'Roteiro de locução gerado pela inteligência artificial.'}"
               </p>
-              
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {(previewJob.script?.tags || ['#shorts', '#ia']).map((tag, idx) => (
-                  <span key={idx} style={{ fontSize: '11px', color: 'var(--accent-cyan)', background: 'rgba(0,242,254,0.1)', padding: '2px 8px', borderRadius: '6px' }}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

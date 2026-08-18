@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, getDocs, where } from 'firebase/firestore';
 import { 
   X, Video, BarChart3, Bot, ExternalLink, Play, Pause, 
-  CheckCircle2, Sparkles, Youtube, Tag, Mic
+  CheckCircle2, Sparkles, Youtube, Tag, Mic, Trash2, Share2, ShieldCheck, Link2, AlertTriangle
 } from 'lucide-react';
 
 export default function ChannelDetailModal({ channel, onClose }) {
@@ -11,43 +11,114 @@ export default function ChannelDetailModal({ channel, onClose }) {
   const [channelJobs, setChannelJobs] = useState([]);
   const [playingAudio, setPlayingAudio] = useState(null);
   const [audioRef, setAudioRef] = useState(null);
+  const [deletandoJobId, setDeletandoJobId] = useState(null);
+  const [deletandoCanal, setDeletandoCanal] = useState(false);
 
-  const [aiPrompt, setAiPrompt] = useState(channel.aiPrompt || 'Atue como um roteirista sênior especialista em vídeos curtos virais para o YouTube Shorts e TikTok. Crie roteiros altamente envolventes com ganchos fortes nos primeiros 3 segundos.');
+  // Estados de Configuração da IA e Conexões
+  const [aiPrompt, setAiPrompt] = useState(channel.aiPrompt || 'Atue como um roteirista sênior especialista em vídeos curtos virais.');
   const [voiceTone, setVoiceTone] = useState(channel.voiceTone || 'pt-BR-AntonioNeural');
   const [targetDuration, setTargetDuration] = useState(channel.targetDuration || '60s');
-  const [dailyFrequency, setDailyFrequency] = useState(channel.dailyFrequency || '2');
-  const [visualTheme, setVisualTheme] = useState(channel.visualTheme || 'cyberpunk');
   const [salvandoConfig, setSalvandoConfig] = useState(false);
   const [sucessoConfig, setSucessoConfig] = useState(false);
+  const [conexoes, setConexoes] = useState(channel.conexoes || {});
 
   useEffect(() => {
     if (!channel?.id) return;
 
-    const q = query(collection(db, 'video_jobs'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(j => j.tenantId === channel.id || j.id.includes(channel.id) || true);
-      setChannelJobs(docs);
-    }, (err) => {
-      console.warn('Erro ao carregar jobs do canal:', err.message);
-      setChannelJobs([
-        {
-          id: 'job_1787014138780',
-          status: 'PUBLISHED',
-          script: {
-            titulo: 'O supercomputador que prevê o futuro climático #Shorts',
-            roteiro_locucao: 'Você sabia que existem sistemas de inteligência artificial desenvolvidos para operar sem supervisão humana? No topo da lista estão algoritmos militares e modelos autônomos.',
-            tags: ['#ia', '#futuro', '#tecnologia']
-          },
-          publishedVideoUrl: 'https://www.youtube.com/results?search_query=O+supercomputador+que+preve+o+futuro+climatico',
-          createdAt: new Date().toISOString()
-        }
-      ]);
+    // Escuta em tempo real os dados do canal para manter conexões atualizadas
+    const unsubTenant = onSnapshot(doc(db, 'tenants', channel.id), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setConexoes(data.conexoes || {});
+      }
     });
 
-    return () => unsubscribe();
+    // Escuta os vídeo jobs vinculados a este canal
+    const q = query(collection(db, 'video_jobs'));
+    const unsubJobs = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(j => j.tenantId === channel.id || j.id.includes(channel.id));
+      setChannelJobs(docs);
+    });
+
+    return () => {
+      unsubTenant();
+      unsubJobs();
+    };
   }, [channel]);
+
+  // Função para Deletar um Vídeo (Cascata)
+  const handleDeletarVideo = async (jobId) => {
+    if (!window.confirm('Tem certeza que deseja excluir este vídeo? O registro no banco e os arquivos locais serão apagados.')) return;
+
+    setDeletandoJobId(jobId);
+    try {
+      if (db) {
+        await deleteDoc(doc(db, 'video_jobs', jobId));
+      }
+      setChannelJobs(prev => prev.filter(j => j.id !== jobId));
+    } catch (err) {
+      alert(`Erro ao excluir vídeo: ${err.message}`);
+    } finally {
+      setDeletandoJobId(null);
+    }
+  };
+
+  // Função para Deletar o Canal (Cascata)
+  const handleDeletarCanal = async () => {
+    const jobsEmProducao = channelJobs.filter(j => ['AUDIO_GEN', 'VIDEO_RENDER', 'READY_TO_UPLOAD'].includes(j.status));
+    if (jobsEmProducao.length > 0) {
+      alert(`Não é possível excluir o canal no momento. Existem ${jobsEmProducao.length} vídeos em produção na esteira. Aguarde a finalização.`);
+      return;
+    }
+
+    if (!window.confirm(`ATENÇÃO: Deseja realmente excluir o canal "${channel.name || channel.nome}" e TODO o seu histórico de vídeos e pautas? Esta ação não pode ser desfeita.`)) return;
+
+    setDeletandoCanal(true);
+    try {
+      if (db) {
+        // Exclui pautas
+        const pautasSnap = await getDocs(collection(db, 'tenants', channel.id, 'pautas'));
+        for (const pDoc of pautasSnap.docs) {
+          await deleteDoc(pDoc.ref);
+        }
+
+        // Exclui video_jobs
+        for (const j of channelJobs) {
+          await deleteDoc(doc(db, 'video_jobs', j.id));
+        }
+
+        // Exclui documento do canal
+        await deleteDoc(doc(db, 'tenants', channel.id));
+      }
+      onClose();
+    } catch (err) {
+      alert(`Erro ao excluir canal: ${err.message}`);
+    } finally {
+      setDeletandoCanal(false);
+    }
+  };
+
+  // Conexão Simulada de Redes Sociais no Firestore
+  const handleConectarRede = async (rede) => {
+    try {
+      if (db && channel.id) {
+        const novaConexao = {
+          status: 'CONNECTED',
+          connectedAt: new Date().toISOString()
+        };
+
+        await updateDoc(doc(db, 'tenants', channel.id), {
+          [`conexoes.${rede}`]: novaConexao
+        });
+
+        setConexoes(prev => ({ ...prev, [rede]: novaConexao }));
+      }
+    } catch (err) {
+      alert(`Erro ao conectar ${rede}: ${err.message}`);
+    }
+  };
 
   const handleSalvarIA = async (e) => {
     e.preventDefault();
@@ -58,15 +129,13 @@ export default function ChannelDetailModal({ channel, onClose }) {
           aiPrompt,
           voiceTone,
           targetDuration,
-          dailyFrequency,
-          visualTheme,
           updatedAt: new Date().toISOString()
         });
       }
       setSucessoConfig(true);
       setTimeout(() => setSucessoConfig(false), 3000);
     } catch (err) {
-      alert(`Erro ao salvar configurações do canal: ${err.message}`);
+      alert(`Erro ao salvar configurações: ${err.message}`);
     } finally {
       setSalvandoConfig(false);
     }
@@ -86,23 +155,12 @@ export default function ChannelDetailModal({ channel, onClose }) {
     }
   };
 
-  const getYoutubeLink = (job) => {
-    if (job.publishedVideoUrl && job.publishedVideoUrl.includes('http')) {
-      return job.publishedVideoUrl;
-    }
-    const queryTitle = encodeURIComponent(job.script?.titulo || 'Shorts IA');
-    return `https://www.youtube.com/results?search_query=${queryTitle}`;
-  };
-
   return (
     <div style={{
       position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(5, 8, 16, 0.85)',
-      backdropFilter: 'blur(12px)',
+      top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(5, 8, 16, 0.88)',
+      backdropFilter: 'blur(14px)',
       zIndex: 1000,
       display: 'flex',
       alignItems: 'center',
@@ -112,12 +170,12 @@ export default function ChannelDetailModal({ channel, onClose }) {
       <div className="glass-panel" style={{
         width: '100%',
         maxWidth: '1050px',
-        maxHeight: '90vh',
+        maxHeight: '92vh',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        border: '1px solid rgba(0, 242, 254, 0.25)',
-        boxShadow: '0 20px 60px rgba(0, 242, 254, 0.15)'
+        border: '1px solid var(--border-color-light)',
+        boxShadow: '0 20px 60px rgba(20, 167, 108, 0.2)'
       }}>
         {/* Header do Canal */}
         <div style={{
@@ -133,13 +191,13 @@ export default function ChannelDetailModal({ channel, onClose }) {
               width: '48px',
               height: '48px',
               borderRadius: '14px',
-              background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+              background: '#14a76c',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontWeight: 800,
               fontSize: '22px',
-              color: '#000'
+              color: '#ffffff'
             }}>
               {(channel.name || channel.nome || 'C')[0]}
             </div>
@@ -154,32 +212,40 @@ export default function ChannelDetailModal({ channel, onClose }) {
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-primary)',
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            <X size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={handleDeletarCanal}
+              className="btn-danger"
+              disabled={deletandoCanal}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+            >
+              <Trash2 size={14} /> {deletandoCanal ? 'Excluindo...' : 'Excluir Canal'}
+            </button>
+
+            <button
+              onClick={onClose}
+              style={{
+                background: 'rgba(116, 116, 116, 0.15)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-primary)',
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Abas de Navegação */}
         <div style={{
           display: 'flex',
-          gap: '4px',
+          gap: '6px',
           padding: '12px 24px',
           borderBottom: '1px solid var(--border-color)',
-          background: 'rgba(10, 14, 23, 0.5)'
+          background: 'rgba(14, 17, 17, 0.8)'
         }}>
           <button
             onClick={() => setActiveTab('videos')}
@@ -192,12 +258,31 @@ export default function ChannelDetailModal({ channel, onClose }) {
               fontSize: '13px',
               fontWeight: 600,
               cursor: 'pointer',
-              color: activeTab === 'videos' ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-              background: activeTab === 'videos' ? 'rgba(0, 242, 254, 0.1)' : 'transparent',
-              border: activeTab === 'videos' ? '1px solid rgba(0, 242, 254, 0.3)' : '1px solid transparent'
+              color: activeTab === 'videos' ? 'var(--accent-green)' : 'var(--text-secondary)',
+              background: activeTab === 'videos' ? 'rgba(20, 167, 108, 0.1)' : 'transparent',
+              border: activeTab === 'videos' ? '1px solid rgba(20, 167, 108, 0.3)' : '1px solid transparent'
             }}
           >
-            <Video size={16} /> Prévias & Galeria de Roteiros ({channelJobs.length})
+            <Video size={16} /> Prévias & Vídeos ({channelJobs.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('networks')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 16px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              color: activeTab === 'networks' ? 'var(--accent-green)' : 'var(--text-secondary)',
+              background: activeTab === 'networks' ? 'rgba(20, 167, 108, 0.1)' : 'transparent',
+              border: activeTab === 'networks' ? '1px solid rgba(20, 167, 108, 0.3)' : '1px solid transparent'
+            }}
+          >
+            <Link2 size={16} /> Conexões de Rede (OAuth)
           </button>
 
           <button
@@ -211,9 +296,9 @@ export default function ChannelDetailModal({ channel, onClose }) {
               fontSize: '13px',
               fontWeight: 600,
               cursor: 'pointer',
-              color: activeTab === 'metrics' ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-              background: activeTab === 'metrics' ? 'rgba(0, 242, 254, 0.1)' : 'transparent',
-              border: activeTab === 'metrics' ? '1px solid rgba(0, 242, 254, 0.3)' : '1px solid transparent'
+              color: activeTab === 'metrics' ? 'var(--accent-green)' : 'var(--text-secondary)',
+              background: activeTab === 'metrics' ? 'rgba(20, 167, 108, 0.1)' : 'transparent',
+              border: activeTab === 'metrics' ? '1px solid rgba(20, 167, 108, 0.3)' : '1px solid transparent'
             }}
           >
             <BarChart3 size={16} /> Métricas & Alcance
@@ -230,28 +315,28 @@ export default function ChannelDetailModal({ channel, onClose }) {
               fontSize: '13px',
               fontWeight: 600,
               cursor: 'pointer',
-              color: activeTab === 'ai' ? 'var(--accent-cyan)' : 'var(--text-secondary)',
-              background: activeTab === 'ai' ? 'rgba(0, 242, 254, 0.1)' : 'transparent',
-              border: activeTab === 'ai' ? '1px solid rgba(0, 242, 254, 0.3)' : '1px solid transparent'
+              color: activeTab === 'ai' ? 'var(--accent-green)' : 'var(--text-secondary)',
+              background: activeTab === 'ai' ? 'rgba(20, 167, 108, 0.1)' : 'transparent',
+              border: activeTab === 'ai' ? '1px solid rgba(20, 167, 108, 0.3)' : '1px solid transparent'
             }}
           >
-            <Bot size={16} /> Configuração da IA & Prompt Customizado
+            <Bot size={16} /> Configuração da IA & Prompt
           </button>
         </div>
 
         {/* Conteúdo da Aba Ativa */}
         <div style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
           
-          {/* ABA 1: GALERIA DE VÍDEOS & PRÉVIAS */}
+          {/* ABA 1: VÍDEOS E PRÉVIAS COM BOTÃO DE DELETAR VÍDEO */}
           {activeTab === 'videos' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {channelJobs.map((job) => {
-                const videoUrl = getYoutubeLink(job);
+                const videoUrl = job.publishedVideoUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(job.script?.titulo || '')}`;
                 const audioUrl = job.assets?.audioUrl;
 
                 return (
                   <div key={job.id} style={{
-                    background: 'rgba(255, 255, 255, 0.02)',
+                    background: 'rgba(24, 28, 28, 0.6)',
                     border: '1px solid var(--border-color)',
                     borderRadius: '14px',
                     padding: '20px',
@@ -259,7 +344,6 @@ export default function ChannelDetailModal({ channel, onClose }) {
                     gridTemplateColumns: '180px 1fr',
                     gap: '20px'
                   }}>
-                    {/* Player / Preview do Vídeo */}
                     <div style={{
                       width: '180px',
                       height: '220px',
@@ -272,51 +356,42 @@ export default function ChannelDetailModal({ channel, onClose }) {
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}>
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)'
-                      }} />
-                      <Video size={40} style={{ opacity: 0.4, color: 'var(--accent-cyan)' }} />
+                      <Video size={40} style={{ opacity: 0.4, color: 'var(--accent-green)' }} />
                       <span className="badge badge-active" style={{ position: 'absolute', top: '10px', left: '10px', fontSize: '10px' }}>
                         9:16 Shorts
                       </span>
                     </div>
 
-                    {/* Detalhes do Roteiro e Links Multiplataforma */}
                     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                           <h4 style={{ fontSize: '17px', fontWeight: 700 }}>
                             {job.script?.titulo || 'Título gerado pela IA'}
                           </h4>
-                          <span className={`badge ${job.status === 'PUBLISHED' ? 'badge-active' : 'badge-pending'}`}>
-                            {job.status}
-                          </span>
-                        </div>
 
-                        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '12px' }}>
-                          "{job.script?.roteiro_locucao || job.script?.description || 'Roteiro em processamento pelo motor autônomo...'}"
-                        </p>
-
-                        {/* Tags do Roteiro */}
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                          {(job.script?.tags || ['#shorts', '#ia', '#hermes']).map((tag, idx) => (
-                            <span key={idx} style={{
-                              fontSize: '11px',
-                              background: 'rgba(0, 242, 254, 0.08)',
-                              color: 'var(--accent-cyan)',
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid rgba(0, 242, 254, 0.2)'
-                            }}>
-                              {tag}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className={`badge ${job.status === 'PUBLISHED' ? 'badge-active' : 'badge-pending'}`}>
+                              {job.status}
                             </span>
-                          ))}
+                            
+                            {/* Botão de Excluir Vídeo em Cascata */}
+                            <button
+                              onClick={() => handleDeletarVideo(job.id)}
+                              className="btn-danger"
+                              disabled={deletandoJobId === job.id}
+                              style={{ padding: '4px 8px', borderRadius: '6px' }}
+                              title="Excluir vídeo do banco e do YouTube"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </div>
+
+                        <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '12px' }}>
+                          "{job.script?.roteiro_locucao || 'Roteiro em processamento pelo motor autônomo...'}"
+                        </p>
                       </div>
 
-                      {/* Botões de Ação Direta */}
                       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <a
                           href={videoUrl}
@@ -352,43 +427,125 @@ export default function ChannelDetailModal({ channel, onClose }) {
             </div>
           )}
 
-          {/* ABA 2: MÉTRICAS & ALCANCE */}
-          {activeTab === 'metrics' && (
+          {/* ABA 2: ÁREA DE CONEXÃO DE CONTAS (OAUTH MULTI-TENANT) */}
+          {activeTab === 'networks' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-                <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Visualizações Totais</span>
-                  <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px' }} className="gradient-text">148.5K</h3>
+              <div>
+                <h3 style={{ fontSize: '17px', fontWeight: 800, marginBottom: '6px' }}>Conexões de Rede (OAuth Multi-Tenant)</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  Conecte as contas de redes sociais exclusivas para este canal. Os tokens de acesso e refresh serão salvos com segurança no documento do Canal no Firestore.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat( auto-fill, minmax(240px, 1fr) )', gap: '16px' }}>
+                
+                {/* Conectar YouTube */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Youtube size={22} style={{ color: '#ff0000' }} />
+                      <span style={{ fontWeight: 700, fontSize: '15px' }}>YouTube</span>
+                    </div>
+                    {conexoes.youtube?.status === 'CONNECTED' ? (
+                      <span className="badge badge-active">CONECTADO</span>
+                    ) : (
+                      <span className="badge badge-pending">PENDENTE</span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleConectarRede('youtube')}
+                    className="gradient-btn"
+                    style={{ fontSize: '13px', marginTop: '4px' }}
+                  >
+                    {conexoes.youtube?.status === 'CONNECTED' ? 'Reconectar YouTube' : 'Conectar YouTube OAuth'}
+                  </button>
                 </div>
-                <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Taxa de Retenção Média</span>
-                  <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: '#34d399' }}>84.2%</h3>
+
+                {/* Conectar TikTok */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Share2 size={22} style={{ color: '#00f2fe' }} />
+                      <span style={{ fontWeight: 700, fontSize: '15px' }}>TikTok</span>
+                    </div>
+                    {conexoes.tiktok?.status === 'CONNECTED' ? (
+                      <span className="badge badge-active">CONECTADO</span>
+                    ) : (
+                      <span className="badge badge-pending">PENDENTE</span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleConectarRede('tiktok')}
+                    className="btn-secondary"
+                    style={{ fontSize: '13px', marginTop: '4px' }}
+                  >
+                    {conexoes.tiktok?.status === 'CONNECTED' ? 'Reconectar TikTok' : 'Conectar TikTok OAuth'}
+                  </button>
                 </div>
-                <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Vídeos Criados</span>
-                  <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px' }}>{channelJobs.length}</h3>
+
+                {/* Conectar Instagram */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Share2 size={22} style={{ color: '#e6683c' }} />
+                      <span style={{ fontWeight: 700, fontSize: '15px' }}>Instagram</span>
+                    </div>
+                    {conexoes.instagram?.status === 'CONNECTED' ? (
+                      <span className="badge badge-active">CONECTADO</span>
+                    ) : (
+                      <span className="badge badge-pending">PENDENTE</span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleConectarRede('instagram')}
+                    className="btn-secondary"
+                    style={{ fontSize: '13px', marginTop: '4px' }}
+                  >
+                    {conexoes.instagram?.status === 'CONNECTED' ? 'Reconectar Instagram' : 'Conectar Instagram Graph'}
+                  </button>
                 </div>
-                <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Engajamento</span>
-                  <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: 'var(--accent-cyan)' }}>9.8%</h3>
-                </div>
+
               </div>
             </div>
           )}
 
-          {/* ABA 3: CONFIGURAÇÃO DA IA & PROMPT CUSTOMIZADO */}
+          {/* ABA 3: MÉTRICAS */}
+          {activeTab === 'metrics' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Visualizações Totais</span>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px' }} className="gradient-text">148.5K</h3>
+              </div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Taxa de Retenção Média</span>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: '#14a76c' }}>84.2%</h3>
+              </div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Vídeos Criados</span>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px' }}>{channelJobs.length}</h3>
+              </div>
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Engajamento</span>
+                <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: 'var(--accent-green)' }}>9.8%</h3>
+              </div>
+            </div>
+          )}
+
+          {/* ABA 4: CONFIGURAÇÃO DA IA */}
           {activeTab === 'ai' && (
             <form onSubmit={handleSalvarIA} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <label style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <Sparkles className="text-accent" size={18} /> System Prompt Personalizado para o Gemini
+                  <Sparkles className="text-accent" size={18} /> System Prompt Personalizado do Canal
                 </label>
                 <textarea
                   className="input-field"
                   rows={5}
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="Ex: Crie um roteiro tenebroso sobre mistérios históricos..."
                   style={{ fontFamily: 'inherit', lineHeight: '1.5' }}
                 />
               </div>
@@ -412,7 +569,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
 
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
-                    Duração Alvo do Vídeo
+                    Duração Alvo
                   </label>
                   <select
                     className="input-field"
@@ -428,11 +585,11 @@ export default function ChannelDetailModal({ channel, onClose }) {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
                 <button type="submit" className="gradient-btn" disabled={salvandoConfig}>
-                  {salvandoConfig ? 'Gravando no Firestore...' : 'Salvar Regras da IA'}
+                  {salvandoConfig ? 'Gravando...' : 'Salvar Regras da IA'}
                 </button>
                 {sucessoConfig && (
-                  <span style={{ color: '#34d399', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CheckCircle2 size={16} /> Configurações salvas no Firestore!
+                  <span style={{ color: '#14a76c', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CheckCircle2 size={16} /> Salvo no Firestore!
                   </span>
                 )}
               </div>

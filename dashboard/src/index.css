@@ -1,15 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg-primary: #090d16;
-  --bg-secondary: #111827;
-  --bg-card: rgba(17, 24, 39, 0.75);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --accent-cyan: #00f2fe;
-  --accent-blue: #4facfe;
-  --accent-purple: #7f00ff;
-  --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
+  --bg-primary: #0e1111;
+  --bg-secondary: #181c1c;
+  --bg-card: rgba(24, 28, 28, 0.85);
+  --border-color: rgba(116, 116, 116, 0.25);
+  --border-color-light: rgba(20, 167, 108, 0.3);
+  --accent-green: #14a76c;
+  --accent-green-hover: #118f5c;
+  --accent-green-glow: rgba(20, 167, 108, 0.3);
+  --text-primary: #ffffff;
+  --text-secondary: #747474;
+  --text-muted: #a3a3a3;
+  --danger-red: #ef4444;
 }
 
 * {
@@ -31,22 +34,22 @@ body {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  background: linear-gradient(135deg, #14a76c, #34d399);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .text-accent {
-  color: var(--accent-cyan);
+  color: var(--accent-green);
 }
 
 .gradient-btn {
-  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
-  color: #000;
+  background: #14a76c;
+  color: #ffffff;
   font-weight: 700;
   border: none;
   padding: 10px 20px;
@@ -56,27 +59,46 @@ body {
 }
 
 .gradient-btn:hover {
+  background: var(--accent-green-hover);
   transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(0, 242, 254, 0.4);
+  box-shadow: 0 4px 20px var(--accent-green-glow);
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
+  background: rgba(116, 116, 116, 0.12);
+  color: #e5e5e5;
   border: 1px solid var(--border-color);
   padding: 10px 18px;
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
+  transition: all 0.2s ease;
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(116, 116, 116, 0.25);
+  border-color: var(--accent-green);
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
 }
 
 .input-field {
   width: 100%;
-  background: rgba(10, 14, 23, 0.8);
+  background: rgba(14, 17, 17, 0.9);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   padding: 12px 16px;
@@ -86,8 +108,8 @@ body {
 }
 
 .input-field:focus {
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 0 2px rgba(0, 242, 254, 0.2);
+  border-color: var(--accent-green);
+  box-shadow: 0 0 0 2px var(--accent-green-glow);
 }
 
 .badge {
@@ -100,7 +122,11 @@ body {
   gap: 6px;
 }
 
-.badge-active { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.badge-active { background: rgba(20, 167, 108, 0.15); color: #34d399; border: 1px solid rgba(20, 167, 108, 0.3); }
 .badge-pending { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
 .badge-error { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 .badge-blue { background: rgba(79, 172, 254, 0.15); color: #60a5fa; border: 1px solid rgba(79, 172, 254, 0.3); }
+
+.table-row-hover:hover {
+  background: rgba(20, 167, 108, 0.04);
+}
