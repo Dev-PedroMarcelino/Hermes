@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs-extra';
 import { config, isOriginAllowed } from './config/env.js';
-import { db } from './config/firebase.js';
+import { db, firebaseStatus } from './config/firebase.js';
 import { runPreflight } from './config/preflight.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { JOB_STATUS } from './services/pipelineOrchestrator.js';
@@ -41,13 +41,32 @@ app.use((req, res, next) => {
   next();
 });
 
+/**
+ * Blocks routes that cannot work without a database, with an explanation.
+ * Without this they would fail on `db.collection` of null and surface as an
+ * opaque 500.
+ */
+function requireFirestore(req, res, next) {
+  if (!firebaseStatus.ok) {
+    return res.status(503).json({
+      error: 'Banco de dados indisponível: o Firebase Admin não inicializou.',
+      detalhe: firebaseStatus.error,
+      comoResolver: firebaseStatus.hint
+    });
+  }
+  next();
+}
+
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
 app.get('/health', (req, res) => {
   res.json({
-    status: 'ONLINE',
+    status: firebaseStatus.ok ? 'ONLINE' : 'DEGRADADO',
     service: 'Hermes Content Engine',
+    firebase: firebaseStatus.ok
+      ? { ok: true }
+      : { ok: false, erro: firebaseStatus.error, comoResolver: firebaseStatus.hint },
     // Whether the *default* app is configured. A channel with its own app can
     // still connect a network that shows false here.
     networks: {
@@ -71,7 +90,7 @@ app.get('/health', (req, res) => {
  * carry no operator credentials. The unguessable, expiring per-job token in the
  * path is what protects it.
  */
-app.get('/public/videos/:jobId/:token', async (req, res) => {
+app.get('/public/videos/:jobId/:token', requireFirestore, async (req, res) => {
   const { jobId, token } = req.params;
 
   try {
@@ -97,7 +116,7 @@ app.get('/public/videos/:jobId/:token', async (req, res) => {
  * Queues a video production job. The pipeline runs in the background; the
  * dashboard follows progress through the Firestore document in real time.
  */
-app.post('/api/jobs/trigger', requireAuth, async (req, res) => {
+app.post('/api/jobs/trigger', requireFirestore, requireAuth, async (req, res) => {
   const { tenantId, customTopic, customInstruction } = req.body;
   if (!tenantId) return res.status(400).json({ error: 'O campo tenantId é obrigatório.' });
 
@@ -148,7 +167,7 @@ app.post('/api/jobs/trigger', requireAuth, async (req, res) => {
 /**
  * Returns the provider consent URL for a tenant to open in the browser.
  */
-app.get('/api/oauth/:network/start', requireAuth, async (req, res) => {
+app.get('/api/oauth/:network/start', requireFirestore, requireAuth, async (req, res) => {
   const { network } = req.params;
   const { tenantId } = req.query;
 
@@ -173,7 +192,7 @@ app.get('/api/oauth/:network/start', requireAuth, async (req, res) => {
  * charged per Google Cloud project, so channels sharing one app also share its
  * ~6 uploads/day.
  */
-app.get('/api/tenants/:tenantId/app-credentials', requireAuth, async (req, res) => {
+app.get('/api/tenants/:tenantId/app-credentials', requireFirestore, requireAuth, async (req, res) => {
   try {
     res.json(await getAppCredentialsStatus({ tenantId: req.params.tenantId }));
   } catch (error) {
@@ -181,7 +200,7 @@ app.get('/api/tenants/:tenantId/app-credentials', requireAuth, async (req, res) 
   }
 });
 
-app.post('/api/tenants/:tenantId/app-credentials/:network', requireAuth, async (req, res) => {
+app.post('/api/tenants/:tenantId/app-credentials/:network', requireFirestore, requireAuth, async (req, res) => {
   const { tenantId, network } = req.params;
 
   if (!SUPPORTED_NETWORKS.includes(network)) {
@@ -220,7 +239,7 @@ app.post('/api/tenants/:tenantId/app-credentials/:network', requireAuth, async (
  * Deliberately not API-key protected: the provider redirects the user's browser
  * here. The CSRF `state` issued at /start is what authenticates the callback.
  */
-app.get('/api/oauth/:network/callback', async (req, res) => {
+app.get('/api/oauth/:network/callback', requireFirestore, async (req, res) => {
   const { network } = req.params;
   const { code, state, error: providerError, error_description: providerErrorDesc } = req.query;
 
@@ -266,7 +285,7 @@ app.get('/api/oauth/:network/callback', async (req, res) => {
 /**
  * Revokes a stored network connection for a tenant.
  */
-app.delete('/api/oauth/:network/connection', requireAuth, async (req, res) => {
+app.delete('/api/oauth/:network/connection', requireFirestore, requireAuth, async (req, res) => {
   const { network } = req.params;
   const { tenantId } = req.query;
   if (!tenantId) return res.status(400).json({ error: 'O parâmetro tenantId é obrigatório.' });
@@ -290,7 +309,7 @@ app.delete('/api/oauth/:network/connection', requireAuth, async (req, res) => {
  * it was unauthenticated and would hand any caller the plaintext of any stored
  * secret. Decryption now happens only inside the pipeline, server-side.
  */
-app.post('/api/vault/credentials', requireAuth, async (req, res) => {
+app.post('/api/vault/credentials', requireFirestore, requireAuth, async (req, res) => {
   const { tenantId, geminiApiKey, pexelsApiKey } = req.body;
   if (!tenantId) return res.status(400).json({ error: 'O campo tenantId é obrigatório.' });
 
@@ -306,34 +325,67 @@ app.post('/api/vault/credentials', requireAuth, async (req, res) => {
   }
 });
 
-// Surface environment problems at boot, but keep serving so /health stays
-// reachable for diagnostics.
-runPreflight({ throwOnSkew: false }).catch(err => console.warn(err.message));
+/**
+ * Last-resort handlers.
+ *
+ * Node terminates the process on an unhandled rejection, which in a long-running
+ * worker means one failed API call could take the whole API down with it. The
+ * engine logs and keeps serving instead: a degraded engine can still be
+ * inspected through /health, a dead one cannot.
+ */
+process.on('unhandledRejection', reason => {
+  console.error('[Server] Promessa rejeitada sem tratamento:', reason?.message || reason);
+});
+process.on('uncaughtException', err => {
+  console.error('[Server] Exceção não capturada:', err?.message || err);
+});
 
-// Bind to 0.0.0.0 so container platforms can route traffic to the process
-app.listen(config.port, '0.0.0.0', async () => {
+// Bind the port FIRST, before anything that can fail. Nothing below this line is
+// allowed to prevent the API from answering.
+const server = app.listen(config.port, '0.0.0.0', () => {
   console.log('=======================================================');
   console.log(`🚀 Hermes Core Engine na porta ${config.port}`);
   console.log(`   Health:   ${config.enginePublicUrl}/health`);
   console.log(`   OAuth cb: ${config.enginePublicUrl}/api/oauth/{network}/callback`);
   console.log(`   Vídeo:    estratégia "${config.publicVideoStrategy}"`);
 
+  if (!firebaseStatus.ok) {
+    console.warn('   ⚠️  Firebase OFF — a API responde, mas sem banco (veja /health).');
+  }
   if (config.allowedOperators.length === 0) {
-    console.warn('   ⚠️  ALLOWED_OPERATORS vazio — QUALQUER conta do projeto Firebase pode operar.');
-    console.warn('       Desative a auto-inscrição em Firebase Console → Authentication →');
-    console.warn('       Settings → User actions antes de expor o motor publicamente.');
+    console.warn('   ⚠️  ALLOWED_OPERATORS vazio — qualquer conta do projeto Firebase pode operar.');
   }
 
-  if (config.runWorkerInProcess) {
-    console.log('   Worker:   ativo neste mesmo processo (ENABLE_WORKER=true)');
-    console.log('=======================================================');
-    try {
-      await startWorkerLoop();
-    } catch (err) {
-      console.error('[Server] Falha ao iniciar o worker:', err.message);
-    }
-  } else {
-    console.log('   Worker:   separado — rode "npm run worker"');
-    console.log('=======================================================');
+  // Networks without a default app are simply unavailable for connecting; a
+  // channel with its own app can still use them, so this is a note, not a fault.
+  const semApp = [
+    !config.oauth.youtube.clientId && 'YouTube',
+    !config.oauth.tiktok.clientKey && 'TikTok',
+    !config.oauth.instagram.appId && 'Instagram'
+  ].filter(Boolean);
+  if (semApp.length > 0) {
+    console.warn(`   ⚠️  Sem app OAuth padrão para: ${semApp.join(', ')}.`);
+    console.warn('       Elas só conectam em canais que tenham app próprio cadastrado.');
   }
+
+  console.log('=======================================================');
+
+  // Best-effort extras — never allowed to abort the boot
+  runPreflight({ throwOnSkew: false }).catch(err => console.warn(err.message));
+
+  if (config.runWorkerInProcess) {
+    if (!firebaseStatus.ok) {
+      console.warn('[Server] Worker não iniciado: depende do Firestore.');
+    } else {
+      startWorkerLoop()
+        .then(() => console.log('[Server] Worker ativo neste processo.'))
+        .catch(err => console.error('[Server] Falha ao iniciar o worker:', err.message));
+    }
+  }
+});
+
+server.on('error', err => {
+  // EADDRINUSE is the one failure worth dying on: another process owns the port
+  console.error(`[Server] Não foi possível escutar na porta ${config.port}:`, err.message);
+  process.exit(1);
 });
