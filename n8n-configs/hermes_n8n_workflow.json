@@ -1,0 +1,71 @@
+{
+  "name": "Hermes Autonomous Video Orchestrator Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "cron_trigger_01",
+      "name": "Every 15 Minutes Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT tenant_id FROM tenants WHERE status = 'ACTIVE'"
+      },
+      "id": "firestore_get_active_tenants",
+      "name": "Fetch Active Tenants from Firestore",
+      "type": "n8n-nodes-base.firestore",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3001/api/jobs/trigger",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"tenantId\": \"{{ $json.tenantId }}\"\n}"
+      },
+      "id": "trigger_engine_pipeline",
+      "name": "Trigger Hermes Node.js Engine Pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Tenants from Firestore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Tenants from Firestore": {
+      "main": [
+        [
+          {
+            "node": "Trigger Hermes Node.js Engine Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

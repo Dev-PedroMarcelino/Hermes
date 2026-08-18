@@ -1,0 +1,31 @@
+# Dependências de Pacotes
+node_modules/
+dashboard/node_modules/
+engine/node_modules/
+
+# Variáveis de Ambiente & Chaves de Segurança
+.env
+.env*.local
+dashboard/.env
+dashboard/.env*.local
+engine/.env
+serviceAccountKey.json
+tokens.json
+
+# Mídia Gerada e Arquivos de Saída
+output/
+*.mp3
+*.mp4
+*.vtt
+
+# Logs e Arquivos Temporários
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# Builds de Produção
+.next/
+dist/
+build/
