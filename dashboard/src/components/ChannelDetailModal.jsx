@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import OAuthConnectionModal from './OAuthConnectionModal';
 import { 
   X, Video, BarChart3, Bot, ExternalLink, Play, Pause, 
   CheckCircle2, Sparkles, Youtube, Tag, Mic, Trash2, Share2, Link2
@@ -13,6 +14,8 @@ export default function ChannelDetailModal({ channel, onClose }) {
   const [audioRef, setAudioRef] = useState(null);
   const [deletandoJobId, setDeletandoJobId] = useState(null);
   const [deletandoCanal, setDeletandoCanal] = useState(false);
+  const [showOAuthModal, setShowOAuthModal] = useState(false);
+  const [connectingRede, setConnectingRede] = useState('youtube');
 
   const [aiPrompt, setAiPrompt] = useState(channel.aiPrompt || 'Atue como um roteirista sênior especialista em vídeos curtos virais.');
   const [voiceTone, setVoiceTone] = useState(channel.voiceTone || 'pt-BR-AntonioNeural');
@@ -45,7 +48,6 @@ export default function ChannelDetailModal({ channel, onClose }) {
     };
   }, [channel]);
 
-  // Função Tratada para Deletar um Vídeo (Cascata no Web Client)
   const handleDeletarVideo = async (jobId) => {
     if (!window.confirm('Tem certeza que deseja excluir este vídeo? O registro será removido.')) return;
 
@@ -70,7 +72,6 @@ export default function ChannelDetailModal({ channel, onClose }) {
     }
   };
 
-  // Função Tratada para Deletar o Canal
   const handleDeletarCanal = async () => {
     const jobsEmProducao = channelJobs.filter(j => ['AUDIO_GEN', 'VIDEO_RENDER', 'READY_TO_UPLOAD'].includes(j.status));
     if (jobsEmProducao.length > 0) {
@@ -105,24 +106,14 @@ export default function ChannelDetailModal({ channel, onClose }) {
     }
   };
 
-  const handleConectarRede = async (rede) => {
-    try {
-      if (db && channel.id) {
-        const novaConexao = {
-          status: 'CONNECTED',
-          connectedAt: new Date().toISOString()
-        };
+  // Abre o Modal Real de OAuth do Google / YouTube
+  const handleAbrirModalOAuth = (rede) => {
+    setConnectingRede(rede);
+    setShowOAuthModal(true);
+  };
 
-        await updateDoc(doc(db, 'tenants', channel.id), {
-          [`conexoes.${rede}`]: novaConexao
-        });
-
-        setConexoes(prev => ({ ...prev, [rede]: novaConexao }));
-      }
-    } catch (err) {
-      console.warn(`Aviso de permissão em ${rede}:`, err.message);
-      setConexoes(prev => ({ ...prev, [rede]: { status: 'CONNECTED', connectedAt: new Date().toISOString() } }));
-    }
+  const handleConexaoSalva = (rede, dadosConexao) => {
+    setConexoes(prev => ({ ...prev, [rede]: dadosConexao }));
   };
 
   const handleSalvarIA = async (e) => {
@@ -433,17 +424,18 @@ export default function ChannelDetailModal({ channel, onClose }) {
             </div>
           )}
 
-          {/* ABA 2: REDES */}
+          {/* ABA 2: REDES COM MODAL OAUTH REAL DO GOOGLE */}
           {activeTab === 'networks' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <h3 style={{ fontSize: '17px', fontWeight: 800, marginBottom: '6px' }}>Conexões de Rede (OAuth Multi-Tenant)</h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  Conecte as contas de redes sociais para este canal.
+                  Clique no botão para abrir a tela oficial de login do Google/YouTube e autorizar o envio automático para o canal.
                 </p>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat( auto-fill, minmax(240px, 1fr) )', gap: '16px' }}>
+                {/* Conectar YouTube */}
                 <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -458,7 +450,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                   </div>
 
                   <button
-                    onClick={() => handleConectarRede('youtube')}
+                    onClick={() => handleAbrirModalOAuth('youtube')}
                     className="gradient-btn"
                     style={{ fontSize: '13px', marginTop: '4px' }}
                   >
@@ -466,6 +458,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                   </button>
                 </div>
 
+                {/* TikTok */}
                 <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -480,7 +473,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                   </div>
 
                   <button
-                    onClick={() => handleConectarRede('tiktok')}
+                    onClick={() => handleAbrirModalOAuth('tiktok')}
                     className="btn-secondary"
                     style={{ fontSize: '13px', marginTop: '4px' }}
                   >
@@ -488,6 +481,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                   </button>
                 </div>
 
+                {/* Instagram */}
                 <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -502,7 +496,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                   </div>
 
                   <button
-                    onClick={() => handleConectarRede('instagram')}
+                    onClick={() => handleAbrirModalOAuth('instagram')}
                     className="btn-secondary"
                     style={{ fontSize: '13px', marginTop: '4px' }}
                   >
@@ -599,6 +593,16 @@ export default function ChannelDetailModal({ channel, onClose }) {
 
         </div>
       </div>
+
+      {/* Modal de Conexão OAuth Real */}
+      {showOAuthModal && (
+        <OAuthConnectionModal
+          channel={channel}
+          rede={connectingRede}
+          onClose={() => setShowOAuthModal(false)}
+          onConnected={handleConexaoSalva}
+        />
+      )}
     </div>
   );
 }
