@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import MonitorProducao from './components/MonitorProducao';
 import GerenciadorCanais from './components/GerenciadorCanais';
+import CriarPautaManual from './components/CriarPautaManual';
 import ConfiguracoesGlobaisModal from './components/ConfiguracoesGlobaisModal';
-import { Layers, Video, Radio, Zap, Settings, ShieldCheck } from 'lucide-react';
+import { Video, Radio, Film, Zap, Settings } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('canais'); // Padrão no Gerenciador de Canais
+  const [activeTab, setActiveTab] = useState('manual'); // Padrão na aba de Pauta Manual e Minisséries
   const [showSettings, setShowSettings] = useState(false);
 
   return (
@@ -49,13 +50,34 @@ export default function App() {
                 HERMES
               </span>
               <span style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>
-                OmniChannel Content Factory
+                Cash-Cow SaaS Factory
               </span>
             </div>
           </div>
 
           {/* Navigation Tabs */}
           <nav style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setActiveTab('manual')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                borderRadius: '10px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: activeTab === 'manual' ? 'var(--accent-cyan)' : 'var(--text-secondary)',
+                background: activeTab === 'manual' ? 'rgba(0, 242, 254, 0.08)' : 'transparent',
+                border: activeTab === 'manual' ? '1px solid rgba(0, 242, 254, 0.25)' : '1px solid transparent',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <Film size={18} />
+              Criar Pauta Manual & Minisséries
+            </button>
+
             <button
               onClick={() => setActiveTab('canais')}
               style={{
@@ -74,7 +96,7 @@ export default function App() {
               }}
             >
               <Radio size={18} />
-              Gerenciador de Canais & IA
+              Gerenciador de Canais
             </button>
 
             <button
@@ -118,6 +140,7 @@ export default function App() {
 
       {/* Main Content View */}
       <main style={{ maxWidth: '1350px', width: '100%', margin: '0 auto', padding: '32px 24px', flex: 1 }}>
+        {activeTab === 'manual' && <CriarPautaManual />}
         {activeTab === 'canais' && <GerenciadorCanais />}
         {activeTab === 'monitor' && <MonitorProducao />}
       </main>
