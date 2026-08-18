@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-import { ExternalLink, Video, Play, Pause, FileText, CheckCircle2, Clock, Sparkles, Youtube, Eye, X } from 'lucide-react';
+import { ExternalLink, Video, Play, Pause, CheckCircle2, Youtube, Eye, X } from 'lucide-react';
 
 export default function MonitorProducao() {
   const [jobs, setJobs] = useState([]);
@@ -28,7 +28,7 @@ export default function MonitorProducao() {
             roteiro_locucao: 'Você sabia que existem sistemas de inteligência artificial desenvolvidos para operar sem supervisão humana? O futuro já começou e a revolução digital é inevitável.',
             tags: ['#ia', '#futuro', '#tecnologia']
           },
-          publishedVideoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          publishedVideoUrl: 'https://www.youtube.com/results?search_query=O+supercomputador+que+preve+o+futuro+climatico',
           createdAt: new Date().toISOString()
         }
       ]);
@@ -63,11 +63,15 @@ export default function MonitorProducao() {
     }
   };
 
-  const formatYoutubeUrl = (rawUrl, id) => {
-    if (rawUrl && (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be'))) {
-      return rawUrl;
+  const getYoutubeLink = (job) => {
+    if (job.publishedVideoUrl && job.publishedVideoUrl.includes('http')) {
+      return job.publishedVideoUrl;
     }
-    return `https://www.youtube.com/watch?v=dQw4w9WgXcQ`;
+    if (job.distributionLog?.youtube?.videoUrl) {
+      return job.distributionLog.youtube.videoUrl;
+    }
+    const queryTitle = encodeURIComponent(job.script?.titulo || 'Shorts IA');
+    return `https://www.youtube.com/results?search_query=${queryTitle}`;
   };
 
   return (
@@ -79,7 +83,7 @@ export default function MonitorProducao() {
               <Video className="text-accent" size={22} /> Monitor de Produção em Tempo Real
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Esteira de execução em tempo real. Clique em qualquer linha para ver a prévia completa do vídeo, roteiro e áudio.
+              Esteira de execução em tempo real. Clique em qualquer linha para ver a prévia completa do roteiro e ouvir a narração MP3.
             </p>
           </div>
         </div>
@@ -94,17 +98,15 @@ export default function MonitorProducao() {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '12px', letterSpacing: '0.5px' }}>
                   <th style={{ padding: '14px 12px' }}>JOB ID</th>
-                  <th style={{ padding: '14px 12px' }}>TÍTULO DO VÍDEO</th>
+                  <th style={{ padding: '14px 12px' }}>TÍTULO DO VÍDEO (GERADO PELA IA)</th>
                   <th style={{ padding: '14px 12px' }}>STATUS DO MOTOR</th>
-                  <th style={{ padding: '14px 12px' }}>CRIADO EM</th>
-                  <th style={{ padding: '14px 12px' }}>AÇÕES & PREVIA</th>
+                  <th style={{ padding: '14px 12px' }}>HORÁRIO</th>
+                  <th style={{ padding: '14px 12px' }}>AÇÕES & PRÉVIA</th>
                 </tr>
               </thead>
               <tbody>
                 {jobs.map((job) => {
-                  const rawUrl = job.publishedVideoUrl || job.distributionLog?.youtube?.videoUrl;
-                  const finalYoutubeUrl = formatYoutubeUrl(rawUrl, job.id);
-                  const audioUrl = job.assets?.audioUrl;
+                  const youtubeUrl = getYoutubeLink(job);
 
                   return (
                     <tr
@@ -125,7 +127,7 @@ export default function MonitorProducao() {
                           {job.script?.titulo || job.script?.title || 'Processando roteiro Gemini...'}
                         </div>
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 400 }}>
-                          Clique para ver o roteiro completo
+                          Clique para abrir o modal de prévia do roteiro
                         </span>
                       </td>
 
@@ -146,11 +148,11 @@ export default function MonitorProducao() {
                             className="btn-secondary"
                             style={{ fontSize: '12px', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                           >
-                            <Eye size={13} /> Prévia
+                            <Eye size={13} /> Ver Roteiro
                           </button>
 
                           <a
-                            href={finalYoutubeUrl}
+                            href={youtubeUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="gradient-btn"
@@ -176,7 +178,7 @@ export default function MonitorProducao() {
         )}
       </div>
 
-      {/* Modal de Prévia de Vídeo & Roteiro */}
+      {/* Modal de Prévia do Vídeo & Roteiro */}
       {previewJob && (
         <div style={{
           position: 'fixed',
@@ -204,7 +206,7 @@ export default function MonitorProducao() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Video className="text-accent" size={24} />
-                <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Prévia do Vídeo Curto</h3>
+                <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Prévia do Roteiro & Conteúdo da IA</h3>
               </div>
               <button
                 onClick={() => setPreviewJob(null)}
@@ -226,7 +228,7 @@ export default function MonitorProducao() {
               <h4 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>
                 {previewJob.script?.titulo || 'Título em processamento'}
               </h4>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5', marginBottom: '12px' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '12px' }}>
                 "{previewJob.script?.roteiro_locucao || 'Roteiro de locução gerado pela inteligência artificial.'}"
               </p>
               
@@ -251,7 +253,7 @@ export default function MonitorProducao() {
               )}
 
               <a
-                href={formatYoutubeUrl(previewJob.publishedVideoUrl || previewJob.distributionLog?.youtube?.videoUrl, previewJob.id)}
+                href={getYoutubeLink(previewJob)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="gradient-btn"

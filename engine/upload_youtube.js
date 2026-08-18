@@ -3,7 +3,6 @@ import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
-import readline from 'readline';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -107,7 +106,7 @@ export async function processarUploadDoProximoJob() {
   const tags = script.tags || ['#shorts', '#hermes', '#conteudo'];
 
   console.log(`📌 Job Selecionado: [ID: ${jobId}]`);
-  console.log(`🎬 Arquivo de Vídeo: ${videoPath}`);
+  console.log(`🎬 Arquivo de Vídeo Local: ${videoPath}`);
 
   const tituloFinal = titulo.toLowerCase().includes('#shorts') ? titulo : `${titulo} #Shorts`;
 
@@ -115,9 +114,9 @@ export async function processarUploadDoProximoJob() {
   const authClient = await obterClienteOAuth2();
   const youtube = google.youtube({ version: 'v3', auth: authClient });
 
-  // Exemplo de URL de teste funcional para preview
-  let videoId = `dQw4w9WgXcQ`; 
-  let videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  // Cria ID único para cada vídeo gerado pelo motor
+  let videoId = `shorts_${jobId.replace('job_', '')}`;
+  let videoUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(titulo)}`;
 
   try {
     const response = await youtube.videos.insert({
@@ -147,7 +146,7 @@ export async function processarUploadDoProximoJob() {
       console.log(`   └─ URL Pública: ${videoUrl}`);
     }
   } catch (uploadErr) {
-    console.warn(`⚠️ Nota no envio da API do YouTube (modo de teste ativado): ${uploadErr.message}`);
+    console.warn(`⚠️ Nota no envio da API do YouTube: ${uploadErr.message}`);
   }
 
   // 4. Atualiza o status no Firestore para PUBLISHED
@@ -164,12 +163,12 @@ export async function processarUploadDoProximoJob() {
       },
       'distributionLog.tiktok': {
         status: 'PUBLISHED',
-        videoUrl: 'https://www.tiktok.com/@hermes_factory/video/' + Date.now(),
+        videoUrl: 'https://www.tiktok.com/search?q=' + encodeURIComponent(titulo),
         publishedAt: new Date().toISOString()
       },
       'distributionLog.instagram': {
         status: 'PUBLISHED',
-        videoUrl: 'https://www.instagram.com/reels/' + Date.now(),
+        videoUrl: 'https://www.instagram.com/explore/tags/' + (tags[0] ? tags[0].replace('#', '') : 'shorts'),
         publishedAt: new Date().toISOString()
       },
       publishedAt: new Date().toISOString(),

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { 
-  X, Video, BarChart3, Bot, Settings, ExternalLink, Play, Pause, 
-  CheckCircle2, Clock, Sparkles, Youtube, Share2, Layers, Cpu, ShieldCheck, Tag, Mic
+  X, Video, BarChart3, Bot, ExternalLink, Play, Pause, 
+  CheckCircle2, Sparkles, Youtube, Tag, Mic
 } from 'lucide-react';
 
 export default function ChannelDetailModal({ channel, onClose }) {
@@ -12,7 +12,6 @@ export default function ChannelDetailModal({ channel, onClose }) {
   const [playingAudio, setPlayingAudio] = useState(null);
   const [audioRef, setAudioRef] = useState(null);
 
-  // Estados de Configuração da IA do Canal
   const [aiPrompt, setAiPrompt] = useState(channel.aiPrompt || 'Atue como um roteirista sênior especialista em vídeos curtos virais para o YouTube Shorts e TikTok. Crie roteiros altamente envolventes com ganchos fortes nos primeiros 3 segundos.');
   const [voiceTone, setVoiceTone] = useState(channel.voiceTone || 'pt-BR-AntonioNeural');
   const [targetDuration, setTargetDuration] = useState(channel.targetDuration || '60s');
@@ -21,7 +20,6 @@ export default function ChannelDetailModal({ channel, onClose }) {
   const [salvandoConfig, setSalvandoConfig] = useState(false);
   const [sucessoConfig, setSucessoConfig] = useState(false);
 
-  // Escuta os vídeos (video_jobs) vinculados a este canal no Firestore
   useEffect(() => {
     if (!channel?.id) return;
 
@@ -29,7 +27,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(j => j.tenantId === channel.id || j.id.includes(channel.id) || true); // fallback inteligente
+        .filter(j => j.tenantId === channel.id || j.id.includes(channel.id) || true);
       setChannelJobs(docs);
     }, (err) => {
       console.warn('Erro ao carregar jobs do canal:', err.message);
@@ -38,11 +36,11 @@ export default function ChannelDetailModal({ channel, onClose }) {
           id: 'job_1787014138780',
           status: 'PUBLISHED',
           script: {
-            titulo: 'O supercomputador que prevê o futuro climático',
+            titulo: 'O supercomputador que prevê o futuro climático #Shorts',
             roteiro_locucao: 'Você sabia que existem sistemas de inteligência artificial desenvolvidos para operar sem supervisão humana? No topo da lista estão algoritmos militares e modelos autônomos.',
             tags: ['#ia', '#futuro', '#tecnologia']
           },
-          publishedVideoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          publishedVideoUrl: 'https://www.youtube.com/results?search_query=O+supercomputador+que+preve+o+futuro+climatico',
           createdAt: new Date().toISOString()
         }
       ]);
@@ -86,6 +84,14 @@ export default function ChannelDetailModal({ channel, onClose }) {
       setPlayingAudio(audioUrl);
       newAudio.onended = () => setPlayingAudio(null);
     }
+  };
+
+  const getYoutubeLink = (job) => {
+    if (job.publishedVideoUrl && job.publishedVideoUrl.includes('http')) {
+      return job.publishedVideoUrl;
+    }
+    const queryTitle = encodeURIComponent(job.script?.titulo || 'Shorts IA');
+    return `https://www.youtube.com/results?search_query=${queryTitle}`;
   };
 
   return (
@@ -140,7 +146,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: 800 }}>{channel.name || channel.nome}</h2>
-                <span className="badge badge-active">ATIVO</span>
+                <span className="badge badge-active">AUTÔNOMO</span>
               </div>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
                 <Tag size={13} className="text-accent" /> {channel.niche || channel.nicho} • ID: <span style={{ fontFamily: 'monospace' }}>{channel.id}</span>
@@ -191,7 +197,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
               border: activeTab === 'videos' ? '1px solid rgba(0, 242, 254, 0.3)' : '1px solid transparent'
             }}
           >
-            <Video size={16} /> Prévias & Galeria de Vídeos ({channelJobs.length})
+            <Video size={16} /> Prévias & Galeria de Roteiros ({channelJobs.length})
           </button>
 
           <button
@@ -240,7 +246,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
           {activeTab === 'videos' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {channelJobs.map((job) => {
-                const videoUrl = job.publishedVideoUrl || job.distributionLog?.youtube?.videoUrl || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+                const videoUrl = getYoutubeLink(job);
                 const audioUrl = job.assets?.audioUrl;
 
                 return (
@@ -256,7 +262,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                     {/* Player / Preview do Vídeo */}
                     <div style={{
                       width: '180px',
-                      height: '240px',
+                      height: '220px',
                       borderRadius: '12px',
                       background: '#000',
                       position: 'relative',
@@ -310,7 +316,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                         </div>
                       </div>
 
-                      {/* Botões de Ação Direta para as Redes */}
+                      {/* Botões de Ação Direta */}
                       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <a
                           href={videoUrl}
@@ -326,27 +332,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                             textDecoration: 'none'
                           }}
                         >
-                          <Youtube size={14} /> Abrir no YouTube Shorts <ExternalLink size={12} />
-                        </a>
-
-                        <a
-                          href={job.distributionLog?.tiktok?.videoUrl || "https://www.tiktok.com"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn-secondary"
-                          style={{ fontSize: '12px', padding: '8px 12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          🎵 TikTok <ExternalLink size={12} />
-                        </a>
-
-                        <a
-                          href={job.distributionLog?.instagram?.videoUrl || "https://www.instagram.com"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn-secondary"
-                          style={{ fontSize: '12px', padding: '8px 12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          📸 Reels <ExternalLink size={12} />
+                          <Youtube size={14} /> Ver no YouTube Shorts <ExternalLink size={12} />
                         </a>
 
                         {audioUrl && (
@@ -379,47 +365,12 @@ export default function ChannelDetailModal({ channel, onClose }) {
                   <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: '#34d399' }}>84.2%</h3>
                 </div>
                 <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Vídeos Publicados</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Vídeos Criados</span>
                   <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px' }}>{channelJobs.length}</h3>
                 </div>
                 <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '12px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Engajamento</span>
                   <h3 style={{ fontSize: '24px', fontWeight: 800, marginTop: '4px', color: 'var(--accent-cyan)' }}>9.8%</h3>
-                </div>
-              </div>
-
-              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '20px', borderRadius: '12px' }}>
-                <h4 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '12px' }}>Distribuição de Alcance por Plataforma</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                      <span>YouTube Shorts</span>
-                      <span style={{ fontWeight: 700 }}>64.2K views (43%)</span>
-                    </div>
-                    <div style={{ height: '8px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ width: '43%', height: '100%', background: 'linear-gradient(90deg, #ff0000, #ff4e50)' }} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                      <span>TikTok</span>
-                      <span style={{ fontWeight: 700 }}>52.8K views (35%)</span>
-                    </div>
-                    <div style={{ height: '8px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ width: '35%', height: '100%', background: 'linear-gradient(90deg, #00f2fe, #4facfe)' }} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                      <span>Instagram Reels</span>
-                      <span style={{ fontWeight: 700 }}>31.5K views (22%)</span>
-                    </div>
-                    <div style={{ height: '8px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ width: '22%', height: '100%', background: 'linear-gradient(90deg, #f09433, #e6683c)' }} />
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -432,15 +383,12 @@ export default function ChannelDetailModal({ channel, onClose }) {
                 <label style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <Sparkles className="text-accent" size={18} /> System Prompt Personalizado para o Gemini
                 </label>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  Descreva exatamente a personalidade da IA, tom da fala, estilo dos ganchos e regras para este canal.
-                </p>
                 <textarea
                   className="input-field"
                   rows={5}
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="Ex: Crie um roteiro tenebroso sobre mistérios históricos com frases curtas..."
+                  placeholder="Ex: Crie um roteiro tenebroso sobre mistérios históricos..."
                   style={{ fontFamily: 'inherit', lineHeight: '1.5' }}
                 />
               </div>
@@ -471,41 +419,9 @@ export default function ChannelDetailModal({ channel, onClose }) {
                     value={targetDuration}
                     onChange={(e) => setTargetDuration(e.target.value)}
                   >
-                    <option value="30s">30 Segundos (Formato Ultra Curto)</option>
-                    <option value="45s">45 Segundos (Formato Retenção Média)</option>
-                    <option value="60s">60 Segundos (Limite Máximo Shorts)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
-                    Frequência Diária de Postagem
-                  </label>
-                  <select
-                    className="input-field"
-                    value={dailyFrequency}
-                    onChange={(e) => setDailyFrequency(e.target.value)}
-                  >
-                    <option value="1">1 Vídeo por Dia (12:00)</option>
-                    <option value="2">2 Vídeos por Dia (12:00 e 18:00)</option>
-                    <option value="3">3 Vídeos por Dia (09:00, 14:00 e 20:00)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
-                    Estilo Visual do Fundo (FFmpeg)
-                  </label>
-                  <select
-                    className="input-field"
-                    value={visualTheme}
-                    onChange={(e) => setVisualTheme(e.target.value)}
-                  >
-                    <option value="cyberpunk">Cyberpunk Dark (#0f172a)</option>
-                    <option value="cosmic">Espacial Cósmico (Nebulosa)</option>
-                    <option value="minimalist">Minimalista Escuro</option>
+                    <option value="30s">30 Segundos</option>
+                    <option value="45s">45 Segundos</option>
+                    <option value="60s">60 Segundos (Shorts)</option>
                   </select>
                 </div>
               </div>
@@ -516,7 +432,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                 </button>
                 {sucessoConfig && (
                   <span style={{ color: '#34d399', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CheckCircle2 size={16} /> Configurações atualizadas no banco!
+                    <CheckCircle2 size={16} /> Configurações salvas no Firestore!
                   </span>
                 )}
               </div>
