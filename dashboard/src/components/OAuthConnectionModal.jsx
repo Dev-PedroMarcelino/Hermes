@@ -1,28 +1,43 @@
 import { useState } from 'react';
 import { db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
-import { X, Youtube, ExternalLink, CheckCircle2, Shield, Key, AlertCircle } from 'lucide-react';
+import { X, Youtube, ExternalLink, CheckCircle2, Shield, Key, AlertCircle, Copy } from 'lucide-react';
 
 export default function OAuthConnectionModal({ channel, rede = 'youtube', onClose, onConnected }) {
   const [clientId, setClientId] = useState(import.meta.env.VITE_YOUTUBE_CLIENT_ID || '');
+  const [redirectUriOption, setRedirectUriOption] = useState('playground'); // 'playground' | 'vercel' | 'custom'
+  const [customRedirectUri, setCustomRedirectUri] = useState(typeof window !== 'undefined' ? `${window.location.origin}` : 'http://localhost:5173');
   const [authCode, setAuthCode] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [sucesso, setSucesso] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
-  const redirectUri = typeof window !== 'undefined' ? `${window.location.origin}/oauth2callback` : 'https://developers.google.com/oauthplayground';
+  const getEffectiveRedirectUri = () => {
+    if (redirectUriOption === 'playground') return 'https://developers.google.com/oauthplayground';
+    if (redirectUriOption === 'vercel') return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+    return customRedirectUri.trim();
+  };
+
+  const effectiveRedirectUri = getEffectiveRedirectUri();
   const scope = encodeURIComponent('https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly');
 
   const getGoogleAuthUrl = () => {
     const finalClientId = clientId.trim() || 'SEU_CLIENT_ID_REAL.apps.googleusercontent.com';
-    return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(finalClientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&access_type=offline&prompt=consent&state=${channel.id}`;
+    return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(finalClientId)}&redirect_uri=${encodeURIComponent(effectiveRedirectUri)}&response_type=code&scope=${scope}&access_type=offline&prompt=consent&state=${channel.id}`;
   };
 
   const abrirJanelaLoginGoogle = () => {
     if (!clientId.trim()) {
-      alert('Por favor, informe o seu Client ID do Google Cloud Console antes de abrir o login.');
+      alert('Por favor, digite o seu Client ID do Google Cloud Console.');
       return;
     }
-    window.open(getGoogleAuthUrl(), '_blank', 'width=600,height=750');
+    window.open(getGoogleAuthUrl(), '_blank', 'width=650,height=750');
+  };
+
+  const copiarUri = () => {
+    navigator.clipboard.writeText(effectiveRedirectUri);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2500);
   };
 
   const handleConfirmarConexao = async (e) => {
@@ -34,6 +49,7 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
         const dadosConexao = {
           status: 'CONNECTED',
           clientId: clientId.trim(),
+          redirectUri: effectiveRedirectUri,
           authCode: authCode.trim() || 'oauth_code_confirmado',
           connectedAt: new Date().toISOString(),
           accountName: `Canal YouTube (${channel.name || channel.nome})`
@@ -71,7 +87,7 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
     }}>
       <div className="glass-panel" style={{
         width: '100%',
-        maxWidth: '650px',
+        maxWidth: '680px',
         maxHeight: '94vh',
         overflowY: 'auto',
         padding: '28px',
@@ -85,7 +101,7 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Youtube size={26} style={{ color: '#ff0000' }} />
             <div>
-              <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Conectar Canal do YouTube via OAuth2</h3>
+              <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Conectar YouTube OAuth2</h3>
               <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Canal: {channel.name || channel.nome}</span>
             </div>
           </div>
@@ -105,17 +121,17 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
           </button>
         </div>
 
-        {/* Alerta explicativo do Erro 401 */}
+        {/* Explicação do Erro redirect_uri_mismatch */}
         <div style={{ background: 'rgba(255, 71, 87, 0.08)', border: '1px solid rgba(255, 71, 87, 0.3)', padding: '14px', borderRadius: '12px', display: 'flex', gap: '10px' }}>
           <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
           <div style={{ fontSize: '12px', color: '#e5e5e5', lineHeight: '1.5' }}>
-            <strong>Por que ocorreu o "Erro 401: invalid_client"?</strong><br />
-            O Google exige o seu <strong>Client ID oficial</strong> cadastrado no Google Cloud Console. Cole o seu Client ID abaixo para abrir a tela de permissões da sua conta real.
+            <strong>Como resolver o "Erro 400: redirect_uri_mismatch":</strong><br />
+            O Google exige que a URI de Redirecionamento da requisição coincida EXATAMENTE com as <strong>URIs de redirecionamento autorizadas</strong> cadastradas no seu Client ID do Google Cloud Console.
           </div>
         </div>
 
         <form onSubmit={handleConfirmarConexao} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {/* Passo 1: Informar o Client ID */}
+          {/* Passo 1: Client ID */}
           <div>
             <label style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
               <Key size={14} className="text-accent" /> 1. Seu Client ID do Google Cloud Console
@@ -128,18 +144,59 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
               onChange={(e) => setClientId(e.target.value)}
               required
             />
+          </div>
+
+          {/* Passo 2: Seleção da URI de Redirecionamento */}
+          <div>
+            <label style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <Shield size={14} className="text-accent" /> 2. Escolha a URI de Redirecionamento (Redirect URI)
+            </label>
+            <select
+              className="input-field"
+              value={redirectUriOption}
+              onChange={(e) => setRedirectUriOption(e.target.value)}
+            >
+              <option value="playground">Google OAuth Playground (Recomendado - https://developers.google.com/oauthplayground)</option>
+              <option value="vercel">URL Atual da Dashboard ({typeof window !== 'undefined' ? window.location.origin : 'https://hermes-lake-phi.vercel.app'})</option>
+              <option value="custom">URL Personalizada / Localhost</option>
+            </select>
+
+            {redirectUriOption === 'custom' && (
+              <input
+                type="text"
+                className="input-field"
+                style={{ marginTop: '8px' }}
+                placeholder="Ex: http://localhost:5173"
+                value={customRedirectUri}
+                onChange={(e) => setCustomRedirectUri(e.target.value)}
+              />
+            )}
+
+            <div style={{ marginTop: '8px', background: 'rgba(0,0,0,0.4)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#00ff87', fontFamily: 'monospace' }}>
+                {effectiveRedirectUri}
+              </span>
+              <button
+                type="button"
+                onClick={copiarUri}
+                className="btn-secondary"
+                style={{ fontSize: '11px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                <Copy size={12} /> {copiado ? 'Copiado!' : 'Copiar URI'}
+              </button>
+            </div>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-              Crie gratuitamente em <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: '#00ff87' }}>Google Cloud Credentials</a> (ID de cliente OAuth 2.0).
+              ⚠️ Cole este endereço exato em "URIs de redirecionamento autorizadas" no seu Google Cloud Console.
             </span>
           </div>
 
-          {/* Passo 2: Botão de Login no Google */}
+          {/* Passo 3: Fazer Login */}
           <div style={{ background: 'rgba(0, 255, 135, 0.04)', border: '1px solid rgba(0, 255, 135, 0.2)', padding: '16px', borderRadius: '12px' }}>
             <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '6px', color: '#00ff87' }}>
-              2. Abrir Tela Oficial de Login do Google
+              3. Abrir Tela de Login do Google
             </h4>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: '1.5' }}>
-              Após preencher o seu Client ID acima, clique no botão para autenticar a sua conta do YouTube.
+              Após garantir que a URI acima está cadastrada no Google Cloud Console, clique para fazer login.
             </p>
 
             <button
@@ -148,19 +205,19 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
               className="gradient-btn"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}
             >
-              <ExternalLink size={16} /> Fazer Login na Conta do Google
+              <ExternalLink size={16} /> Abrir Login do Google OAuth2
             </button>
           </div>
 
-          {/* Passo 3: Código de Autorização */}
+          {/* Passo 4: Código de Autorização */}
           <div>
             <label style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <Shield size={14} className="text-accent" /> 3. Cole o Código de Autorização / Token do Google
+              <Key size={14} className="text-accent" /> 4. Cole o Código de Autorização / Token do Google (Code)
             </label>
             <input
               type="text"
               className="input-field"
-              placeholder="Cole aqui o código gerado após o login (Ex: 4/0AVG7...)"
+              placeholder="Cole aqui o código gerado pelo Google (Ex: 4/0AVG7...)"
               value={authCode}
               onChange={(e) => setAuthCode(e.target.value)}
               required
