@@ -121,12 +121,12 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
           </button>
         </div>
 
-        {/* Explicação do Erro redirect_uri_mismatch */}
+        {/* Instrução para o Erro 403: org_internal */}
         <div style={{ background: 'rgba(255, 71, 87, 0.08)', border: '1px solid rgba(255, 71, 87, 0.3)', padding: '14px', borderRadius: '12px', display: 'flex', gap: '10px' }}>
           <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
           <div style={{ fontSize: '12px', color: '#e5e5e5', lineHeight: '1.5' }}>
-            <strong>Como resolver o "Erro 400: redirect_uri_mismatch":</strong><br />
-            O Google exige que a URI de Redirecionamento da requisição coincida EXATAMENTE com as <strong>URIs de redirecionamento autorizadas</strong> cadastradas no seu Client ID do Google Cloud Console.
+            <strong>Como resolver o "Erro 403: org_internal":</strong><br />
+            No Google Cloud Console em <strong>Tela de permissão OAuth</strong>, altere o Tipo de Usuário para <strong>Externo (External)</strong> e adicione o seu e-mail em <strong>Usuários de Teste</strong>.
           </div>
         </div>
 
@@ -146,7 +146,7 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
             />
           </div>
 
-          {/* Passo 2: Seleção da URI de Redirecionamento */}
+          {/* Passo 2: Seleção da URI */}
           <div>
             <label style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
               <Shield size={14} className="text-accent" /> 2. Escolha a URI de Redirecionamento (Redirect URI)
@@ -185,9 +185,6 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
                 <Copy size={12} /> {copiado ? 'Copiado!' : 'Copiar URI'}
               </button>
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-              ⚠️ Cole este endereço exato em "URIs de redirecionamento autorizadas" no seu Google Cloud Console.
-            </span>
           </div>
 
           {/* Passo 3: Fazer Login */}
@@ -196,7 +193,7 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
               3. Abrir Tela de Login do Google
             </h4>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: '1.5' }}>
-              Após garantir que a URI acima está cadastrada no Google Cloud Console, clique para fazer login.
+              Após configurar o app para "Externo" no Google Console, clique abaixo para logar com seu e-mail.
             </p>
 
             <button
@@ -212,12 +209,12 @@ export default function OAuthConnectionModal({ channel, rede = 'youtube', onClos
           {/* Passo 4: Código de Autorização */}
           <div>
             <label style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <Key size={14} className="text-accent" /> 4. Cole o Código de Autorização / Token do Google (Code)
+              <Key size={14} className="text-accent" /> 4. Cole o Código de Autorização (Code)
             </label>
             <input
               type="text"
               className="input-field"
-              placeholder="Cole aqui o código gerado pelo Google (Ex: 4/0AVG7...)"
+              placeholder="Cole aqui o código gerado (Ex: 4/0AVG7...)"
               value={authCode}
               onChange={(e) => setAuthCode(e.target.value)}
               required
