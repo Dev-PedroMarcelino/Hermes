@@ -106,8 +106,8 @@ export default function LoginScreen() {
         </form>
 
         <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6 }}>
-          Crie o usuário em Firebase Console → Authentication e adicione o mesmo
-          e-mail em <code>ALLOWED_OPERATORS</code> no motor.
+          Usuários são criados em Firebase Console → Authentication.
+          Para restringir quem pode operar, liste os e-mails em <code>ALLOWED_OPERATORS</code> no motor.
         </p>
       </div>
     </div>
