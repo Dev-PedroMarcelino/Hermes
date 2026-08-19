@@ -194,9 +194,14 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
       .map(provider => providerToNetwork[provider])
       .filter(Boolean);
 
-    const targetNetworks = tenantData.targetNetworks?.length
-      ? tenantData.targetNetworks
+    let targetNetworks = tenantData.targetNetworks?.length
+      ? tenantData.targetNetworks.filter(net => connectedNetworks.includes(net))
       : connectedNetworks;
+
+    // Fallback: if tenant targetNetworks had items but none were connected, fallback to connectedNetworks
+    if (targetNetworks.length === 0 && connectedNetworks.length > 0) {
+      targetNetworks = connectedNetworks;
+    }
 
     if (targetNetworks.length === 0) {
       console.log(`[Pipeline] Canal '${tenantId}' não possui redes conectadas. Vídeo pronto em READY_TO_UPLOAD.`);
