@@ -11,7 +11,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 function splitList(value) {
   return (value || '')
     .split(',')
-    .map(item => item.trim())
+    .map(item => item.trim().replace(/\/$/, ''))
     .filter(Boolean);
 }
 
