@@ -5,7 +5,7 @@ import OAuthConnectionModal from './OAuthConnectionModal';
 import AppCredentialsPanel from './AppCredentialsPanel';
 import { 
   X, Video, BarChart3, Bot, ExternalLink, Play, Pause, 
-  CheckCircle2, Sparkles, Youtube, Tag, Mic, Trash2, Share2, Link2
+  CheckCircle2, Sparkles, Youtube, Tag, Mic, Trash2, Share2, Link2, RefreshCw
 } from 'lucide-react';
 
 export default function ChannelDetailModal({ channel, onClose }) {
@@ -70,6 +70,21 @@ export default function ChannelDetailModal({ channel, onClose }) {
       }
     } finally {
       setDeletandoJobId(null);
+    }
+  };
+
+  const handleTentarNovamente = async (jobId) => {
+    try {
+      if (db) {
+        await updateDoc(doc(db, 'video_jobs', jobId), {
+          status: 'QUEUED',
+          errorMessage: null,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao reiniciar vídeo:', err.message);
+      alert('Não foi possível reiniciar o vídeo: ' + err.message);
     }
   };
 
@@ -415,6 +430,28 @@ export default function ChannelDetailModal({ channel, onClose }) {
                             style={{ fontSize: '12px', padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                           >
                             {playingAudio === audioUrl ? <Pause size={14} /> : <Play size={14} />} Ouvir Narração MP3
+                          </button>
+                        )}
+
+                        {job.status === 'FAILED' && (
+                          <button
+                            onClick={() => handleTentarNovamente(job.id)}
+                            className="btn-secondary"
+                            style={{
+                              fontSize: '12px',
+                              padding: '8px 12px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              background: 'rgba(255, 71, 87, 0.15)',
+                              color: '#ff4757',
+                              border: '1px solid rgba(255, 71, 87, 0.35)',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                              borderRadius: '8px'
+                            }}
+                          >
+                            <RefreshCw size={13} /> Tentar Novamente
                           </button>
                         )}
                       </div>

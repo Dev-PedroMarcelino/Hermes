@@ -19,13 +19,8 @@ export async function generateVideoScript({
   recentTitles = []
 }) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
-    generationConfig: {
-      responseMimeType: 'application/json'
-    }
-  });
-
+  const primaryModelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  
   const prompt = `
 Você é um roteirista profissional de conteúdo viral para redes sociais curtas (YouTube Shorts, TikTok, Instagram Reels).
 Crie um roteiro de vídeo curto de ALTA RETENÇÃO (duração total ideal entre 30 a 50 segundos).
@@ -59,7 +54,26 @@ REGRAS RÍGIDAS:
 4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON se possível.
 `;
 
-  const result = await model.generateContent(prompt);
+  let result;
+  try {
+    const model = genAI.getGenerativeModel({
+      model: primaryModelName,
+      generationConfig: { responseMimeType: 'application/json' }
+    });
+    result = await model.generateContent(prompt);
+  } catch (err) {
+    if (primaryModelName !== 'gemini-1.5-flash' && (err.message?.includes('404') || err.message?.includes('not found') || err.message?.includes('no longer available'))) {
+      console.warn(`[Gemini] Modelo ${primaryModelName} não disponível (${err.message}). Usando fallback para gemini-1.5-flash...`);
+      const fallbackModel = genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+        generationConfig: { responseMimeType: 'application/json' }
+      });
+      result = await fallbackModel.generateContent(prompt);
+    } else {
+      throw err;
+    }
+  }
+
   const responseText = result.response.text();
 
   let scriptJson;

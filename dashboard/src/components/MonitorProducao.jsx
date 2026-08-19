@@ -108,6 +108,22 @@ export default function MonitorProducao() {
     }
   };
 
+  const handleTentarNovamente = async (e, jobId) => {
+    if (e) e.stopPropagation();
+    try {
+      if (db) {
+        await updateDoc(doc(db, 'video_jobs', jobId), {
+          status: 'QUEUED',
+          errorMessage: null,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao reiniciar vídeo:', err.message);
+      alert('Não foi possível reiniciar o vídeo: ' + err.message);
+    }
+  };
+
   const getYoutubeEmbedId = (job) => {
     if (job?.distributionLog?.youtube?.videoId) {
       return job.distributionLog.youtube.videoId;
@@ -363,10 +379,36 @@ export default function MonitorProducao() {
                         }} />
                       </div>
 
-                      {falhou && job.errorMessage && (
-                        <span style={{ fontSize: '11px', color: '#ff9aa5', lineHeight: 1.5, marginTop: '2px' }}>
-                          {job.errorMessage}
-                        </span>
+                      {falhou && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                          {job.errorMessage && (
+                            <span style={{ fontSize: '11px', color: '#ff9aa5', lineHeight: 1.5 }}>
+                              {job.errorMessage}
+                            </span>
+                          )}
+                          <button
+                            onClick={(e) => handleTentarNovamente(e, job.id)}
+                            className="btn-secondary"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              padding: '8px 14px',
+                              borderRadius: '8px',
+                              width: 'fit-content',
+                              background: 'rgba(255, 71, 87, 0.15)',
+                              color: '#ff4757',
+                              border: '1px solid rgba(255, 71, 87, 0.35)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <RefreshCw size={13} /> Tentar Novamente
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
