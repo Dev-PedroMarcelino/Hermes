@@ -350,6 +350,11 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
     // ---- Final -------------------------------------------------------------
     const anyPublished = Object.values(distributionLog).some(entry => entry.status === 'PUBLISHED');
 
+    const specificErrors = Object.entries(distributionLog)
+      .filter(([, v]) => v.status === 'FAILED')
+      .map(([k, v]) => `${k.toUpperCase()}: ${v.error}`)
+      .join(' | ');
+
     await jobRef.set(
       {
         status: anyPublished ? JOB_STATUS.PUBLISHED : JOB_STATUS.FAILED,
@@ -364,7 +369,7 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
         },
         errorMessage: anyPublished
           ? null
-          : 'Nenhuma rede aceitou a publicação. Verifique as conexões do canal.',
+          : (specificErrors ? `Falha na publicação — ${specificErrors}` : 'Nenhuma rede aceitou a publicação. Verifique as conexões do canal.'),
         completedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       },
