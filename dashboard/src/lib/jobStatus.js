@@ -9,7 +9,7 @@ const STAGES = {
   AUDIO_GEN: { percent: 32, step: 2, label: '2/6 · Sintetizando locução neural (EdgeTTS)' },
   MEDIA_FETCH: { percent: 48, step: 3, label: '3/6 · Baixando clipes de fundo (Pexels)' },
   VIDEO_RENDER: { percent: 66, step: 4, label: '4/6 · Renderizando vídeo 9:16 com legendas (FFmpeg)' },
-  READY_TO_UPLOAD: { percent: 80, step: 5, label: '5/6 · Vídeo pronto, preparando publicação' },
+  READY_TO_UPLOAD: { percent: 100, step: 6, label: 'Vídeo pronto! (Conecte uma rede social para publicar)' },
   UPLOADING: { percent: 90, step: 5, label: '5/6 · Publicando nas redes conectadas' },
   PUBLISHED: { percent: 100, step: 6, label: '6/6 · Publicado!' },
   FAILED: { percent: 100, step: 6, label: 'Falhou' }

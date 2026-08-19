@@ -199,9 +199,12 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
       : connectedNetworks;
 
     if (targetNetworks.length === 0) {
-      throw new Error(
-        'Nenhuma rede conectada neste canal. Conecte YouTube, TikTok ou Instagram antes de produzir.'
-      );
+      console.log(`[Pipeline] Canal '${tenantId}' não possui redes conectadas. Vídeo pronto em READY_TO_UPLOAD.`);
+      await setStatus(jobRef, JOB_STATUS.READY_TO_UPLOAD, {
+        notice: 'Vídeo renderizado com sucesso! Conecte o YouTube, TikTok ou Instagram no canal para publicação automática.',
+        completedAt: new Date().toISOString()
+      });
+      return;
     }
     console.log(`[Pipeline] Distribuindo para: ${targetNetworks.join(', ')}`);
     const distributionLog = {};
