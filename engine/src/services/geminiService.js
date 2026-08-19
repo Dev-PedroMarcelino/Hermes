@@ -20,7 +20,14 @@ export async function generateVideoScript({
 }) {
   const genAI = new GoogleGenerativeAI(apiKey);
   const primaryModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-  const candidateModels = Array.from(new Set([primaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-lite']));
+  const candidateModels = Array.from(new Set([
+    primaryModel,
+    'gemini-2.0-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-2.5-flash',
+    'gemini-1.5-flash'
+  ]));
 
   const prompt = `
 Você é um roteirista profissional de conteúdo viral para redes sociais curtas (YouTube Shorts, TikTok, Instagram Reels).
