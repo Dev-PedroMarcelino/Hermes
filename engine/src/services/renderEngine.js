@@ -43,7 +43,8 @@ export async function renderFinalVideo({
   videoClips = [],
   audioPath,
   assSubtitlePath,
-  outputVideoPath
+  outputVideoPath,
+  onProgress
 }) {
   await fs.ensureDir(path.dirname(outputVideoPath));
 
@@ -70,6 +71,13 @@ export async function renderFinalVideo({
     const command = ffmpeg();
     const filters = [];
     let videoLabel;
+
+    // Safety timeout: abort if FFmpeg takes longer than 4 minutes
+    const ffmpegTimer = setTimeout(() => {
+      console.error('[RenderEngine] Timeout de 4 minutos excedido no FFmpeg! Cancelando renderização...');
+      try { command.kill('SIGKILL'); } catch (e) {}
+      reject(new Error('Timeout de 4 minutos excedido na renderização do vídeo.'));
+    }, 240000);
 
     if (usableClips.length === 0) {
       // No stock footage: synthesize a solid branded background of the right length
@@ -123,8 +131,9 @@ export async function renderFinalVideo({
       .outputOptions([
         '-map', `${audioInputIndex}:a`,
         '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '22',
+        '-preset', 'ultrafast',
+        '-crf', '23',
+        '-threads', '2',
         '-c:a', 'aac',
         '-b:a', '192k',
         '-ar', '44100',
@@ -139,10 +148,15 @@ export async function renderFinalVideo({
       })
       .on('progress', progress => {
         if (progress.percent) {
-          console.log(`[RenderEngine] Renderizando: ${Math.round(progress.percent)}%`);
+          const p = Math.min(100, Math.max(0, Math.round(progress.percent)));
+          console.log(`[RenderEngine] Renderizando: ${p}%`);
+          if (typeof onProgress === 'function') {
+            onProgress(p);
+          }
         }
       })
       .on('end', async () => {
+        clearTimeout(ffmpegTimer);
         const exists = await fs.pathExists(outputVideoPath);
         const size = exists ? (await fs.stat(outputVideoPath)).size : 0;
         if (!size) {
@@ -152,6 +166,7 @@ export async function renderFinalVideo({
         resolve(outputVideoPath);
       })
       .on('error', (err, stdout, stderr) => {
+        clearTimeout(ffmpegTimer);
         console.error('[RenderEngine] Erro FFmpeg:', err.message);
         if (stderr) console.error('[RenderEngine] stderr:', stderr.slice(-2000));
         reject(new Error(`Falha na renderização FFmpeg: ${err.message}`));

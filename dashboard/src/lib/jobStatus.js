@@ -19,8 +19,18 @@ const FALLBACK = { percent: 10, step: 0, label: 'Iniciando...' };
 
 export const TOTAL_STEPS = 6;
 
-export function getProgressStage(status) {
-  return STAGES[status] || FALLBACK;
+export function getProgressStage(status, job = {}) {
+  const stage = STAGES[status] || FALLBACK;
+  if (status === 'VIDEO_RENDER' && typeof job.renderProgress === 'number') {
+    const p = Math.min(100, Math.max(0, Math.round(job.renderProgress)));
+    const dynamicPercent = 66 + Math.round((p / 100) * 14); // 66% -> 80%
+    return {
+      ...stage,
+      percent: dynamicPercent,
+      label: `4/6 · Renderizando vídeo 9:16 com legendas (${p}%)`
+    };
+  }
+  return stage;
 }
 
 export function isTerminal(status) {

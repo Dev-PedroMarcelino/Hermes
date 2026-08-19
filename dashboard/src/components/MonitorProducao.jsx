@@ -303,7 +303,7 @@ export default function MonitorProducao() {
               </div>
             ) : (
               videosEmProducao.map((job) => {
-                const stage = getProgressStage(job.status);
+                const stage = getProgressStage(job.status, job);
                 const falhou = isFailed(job.status);
 
                 return (

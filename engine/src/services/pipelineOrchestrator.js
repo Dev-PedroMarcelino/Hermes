@@ -157,11 +157,18 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
     await setStatus(jobRef, JOB_STATUS.VIDEO_RENDER);
 
     const outputVideoPath = path.join(OUTPUT_DIR, `${jobId}_final.mp4`);
+    let lastPercent = 0;
     await renderFinalVideo({
       videoClips: downloadedClips,
       audioPath,
       assSubtitlePath,
-      outputVideoPath
+      outputVideoPath,
+      onProgress: async (percent) => {
+        if (percent - lastPercent >= 5 || percent >= 100) {
+          lastPercent = percent;
+          await jobRef.set({ renderProgress: percent }, { merge: true }).catch(() => {});
+        }
+      }
     });
 
     await setStatus(jobRef, JOB_STATUS.READY_TO_UPLOAD, {
