@@ -19,8 +19,9 @@ export async function generateVideoScript({
   recentTitles = []
 }) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const primaryModelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  const candidateModels = Array.from(new Set([primaryModel, 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-lite']));
+
   const prompt = `
 Você é um roteirista profissional de conteúdo viral para redes sociais curtas (YouTube Shorts, TikTok, Instagram Reels).
 Crie um roteiro de vídeo curto de ALTA RETENÇÃO (duração total ideal entre 30 a 50 segundos).
@@ -55,23 +56,33 @@ REGRAS RÍGIDAS:
 `;
 
   let result;
-  try {
-    const model = genAI.getGenerativeModel({
-      model: primaryModelName,
-      generationConfig: { responseMimeType: 'application/json' }
-    });
-    result = await model.generateContent(prompt);
-  } catch (err) {
-    if (primaryModelName !== 'gemini-1.5-flash' && (err.message?.includes('404') || err.message?.includes('not found') || err.message?.includes('no longer available'))) {
-      console.warn(`[Gemini] Modelo ${primaryModelName} não disponível (${err.message}). Usando fallback para gemini-1.5-flash...`);
-      const fallbackModel = genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
+  let lastError;
+
+  for (const modelName of candidateModels) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
         generationConfig: { responseMimeType: 'application/json' }
       });
-      result = await fallbackModel.generateContent(prompt);
-    } else {
+      result = await model.generateContent(prompt);
+      if (modelName !== primaryModel) {
+        console.warn(`[Gemini] Usado modelo de fallback '${modelName}' com sucesso (modelo '${primaryModel}' falhou).`);
+      }
+      lastError = null;
+      break;
+    } catch (err) {
+      lastError = err;
+      const isNotFound = err.message?.includes('404') || err.message?.includes('not found') || err.message?.includes('no longer available');
+      if (isNotFound) {
+        console.warn(`[Gemini] Modelo '${modelName}' não encontrado no Gemini API (404). Tentando próximo modelo...`);
+        continue;
+      }
       throw err;
     }
+  }
+
+  if (lastError || !result) {
+    throw lastError || new Error('Nenhum modelo Gemini disponível respondeu à requisição.');
   }
 
   const responseText = result.response.text();

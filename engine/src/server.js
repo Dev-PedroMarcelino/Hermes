@@ -66,7 +66,7 @@ function requireFirestore(req, res, next) {
 // ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
-app.get('/health', (req, res) => {
+const healthHandler = (req, res) => {
   res.json({
     status: firebaseStatus.ok ? 'ONLINE' : 'DEGRADADO',
     service: 'Hermes Content Engine',
@@ -87,7 +87,11 @@ app.get('/health', (req, res) => {
     estrategiaDeVideo: config.publicVideoStrategy,
     timestamp: new Date().toISOString()
   });
-});
+};
+
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
+
 
 /**
  * Serves a rendered video to the social platforms.
