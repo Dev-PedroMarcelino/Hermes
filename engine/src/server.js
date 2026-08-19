@@ -20,6 +20,12 @@ import {
 import { resolvePublicVideo } from './services/publicVideoService.js';
 import { startWorkerLoop, isWorkerRunning } from './worker/productionWorker.js';
 
+console.log("--- DIAGNÓSTICO DE AMBIENTE ---");
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("YOUTUBE CLIENT ID Existe?", !!process.env.YOUTUBE_CLIENT_ID);
+console.log("YOUTUBE SECRET Existe?", !!process.env.YOUTUBE_CLIENT_SECRET);
+console.log("-------------------------------");
+
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
