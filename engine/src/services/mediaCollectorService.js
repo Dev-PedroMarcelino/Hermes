@@ -62,15 +62,50 @@ export async function fetchStockVideos({ queries = [], outputDirPath, pexelsApiK
         method: 'get',
         url: videoFile.link,
         responseType: 'stream',
-        timeout: 120000
+        timeout: 15000
       });
 
       await new Promise((resolve, reject) => {
         const fileStream = fs.createWriteStream(filePath);
+        let finished = false;
+
+        const streamTimer = setTimeout(() => {
+          if (!finished) {
+            finished = true;
+            try { download.data.destroy(); } catch (e) {}
+            try { fileStream.destroy(); } catch (e) {}
+            fs.remove(filePath).catch(() => {});
+            reject(new Error(`Timeout de 20s excedido ao baixar o vídeo de "${query}".`));
+          }
+        }, 20000);
+
         download.data.pipe(fileStream);
-        fileStream.on('finish', resolve);
-        fileStream.on('error', reject);
-        download.data.on('error', reject);
+
+        fileStream.on('finish', () => {
+          if (!finished) {
+            finished = true;
+            clearTimeout(streamTimer);
+            resolve();
+          }
+        });
+
+        fileStream.on('error', err => {
+          if (!finished) {
+            finished = true;
+            clearTimeout(streamTimer);
+            fs.remove(filePath).catch(() => {});
+            reject(err);
+          }
+        });
+
+        download.data.on('error', err => {
+          if (!finished) {
+            finished = true;
+            clearTimeout(streamTimer);
+            fs.remove(filePath).catch(() => {});
+            reject(err);
+          }
+        });
       });
 
       downloadedFiles.push(filePath);
