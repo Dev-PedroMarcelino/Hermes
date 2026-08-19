@@ -72,16 +72,16 @@ export async function renderFinalVideo({
     const filters = [];
     let videoLabel;
 
-    // Safety timeout: abort if FFmpeg takes longer than 4 minutes
+    // Safety timeout: abort if FFmpeg takes longer than 10 minutes
     const ffmpegTimer = setTimeout(() => {
-      console.error('[RenderEngine] Timeout de 4 minutos excedido no FFmpeg! Cancelando renderização...');
+      console.error('[RenderEngine] Timeout de 10 minutos excedido no FFmpeg! Cancelando renderização...');
       try { command.kill('SIGKILL'); } catch (e) {}
-      reject(new Error('Timeout de 4 minutos excedido na renderização do vídeo.'));
-    }, 240000);
+      reject(new Error('Timeout de 10 minutos excedido na renderização do vídeo.'));
+    }, 600000);
 
     if (usableClips.length === 0) {
       // No stock footage: synthesize a solid branded background of the right length
-      command.input(`color=c=0x0f0f1a:s=1080x1920:r=30:d=${targetDuration.toFixed(2)}`);
+      command.input(`color=c=0x0f0f1a:s=720x1280:r=25:d=${targetDuration.toFixed(2)}`);
       command.inputOptions(['-f', 'lavfi']);
       videoLabel = '0:v';
     } else {
@@ -96,8 +96,8 @@ export async function renderFinalVideo({
       usableClips.forEach((_, index) => {
         filters.push(
           `[${index}:v]trim=duration=${perClip.toFixed(3)},setpts=PTS-STARTPTS,` +
-            `scale=1080:1920:force_original_aspect_ratio=increase,` +
-            `crop=1080:1920,setsar=1,fps=30[v${index}]`
+            `scale=720:1280:force_original_aspect_ratio=increase,` +
+            `crop=720:1280,setsar=1,fps=25[v${index}]`
         );
       });
 
@@ -132,10 +132,10 @@ export async function renderFinalVideo({
         '-map', `${audioInputIndex}:a`,
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
-        '-crf', '23',
+        '-crf', '24',
         '-threads', '2',
         '-c:a', 'aac',
-        '-b:a', '192k',
+        '-b:a', '128k',
         '-ar', '44100',
         '-pix_fmt', 'yuv420p',
         // Fast-start moves the moov atom to the front so platforms can stream it
