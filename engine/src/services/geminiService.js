@@ -44,10 +44,11 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 {
   "title": "Título chamativo do vídeo",
   "hook": "Frase de impacto inicial dos primeiros 3 segundos para prender a atenção",
+  "mainVisualTheme": "Palavras-chave em inglês representando o TEMA VISUAL PRINCIPAL do vídeo para busca em banco de vídeos (ex: 'star wars space sci-fi galaxy battle' ou 'batman dark knight superhero city night')",
   "sections": [
     {
       "text": "Texto exato que será falado pela voz sintetizada",
-      "visualSearchQuery": "Keywords em inglês para buscar banco de vídeo no Pexels (ex: 'futuristic artificial intelligence robot city')",
+      "visualSearchQuery": "Keywords em inglês altamente contextualizadas com o assunto principal do vídeo e a cena específica (ex para Star Wars: 'star wars space galaxy sci-fi battle'; ex para Batman: 'dark knight superhero city skyline night')",
       "durationEstSeconds": 6
     }
   ],
@@ -55,11 +56,13 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
   "hashtags": ["#shorts", "#nicho", "#viral"]
 }
 
-REGRAS RÍGIDAS:
-1. O campo 'hook' deve ser extremamente forte.
-2. A soma do texto falado em 'sections' deve formar uma narrativa fluida, sem enrolação.
-3. Os termos 'visualSearchQuery' DEVEM ESTAR EM INGLÊS para garantir compatibilidade com APIs de vídeo stock (ex: Pexels).
-4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON se possível.
+REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS:
+1. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
+2. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
+3. CRÍTICO: Os campos 'mainVisualTheme' e 'visualSearchQuery' DEVEM ESTAR EM INGLÊS e SER ALTAMENTE RELEVANTES AO TÓPICO DO VÍDEO.
+   - Se o vídeo é sobre Star Wars / Anakin: inclua termos como 'space', 'galaxy', 'sci-fi', 'futuristic battle', 'dark warrior', 'star wars'. NUNCA gere vídeos de fundo genéricos ou desconexos.
+   - Se o vídeo é sobre Batman / Cidades: inclua termos como 'superhero', 'dark knight', 'gotham city skyline', 'night city', 'cyberpunk warrior'.
+4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 
   let result;
@@ -109,6 +112,9 @@ REGRAS RÍGIDAS:
   }
   if (!Array.isArray(scriptJson.sections) || scriptJson.sections.length === 0) {
     throw new Error('Roteiro do Gemini veio sem "sections".');
+  }
+  if (!scriptJson.mainVisualTheme) {
+    scriptJson.mainVisualTheme = topic ? `${topic} cinematic stock background` : 'abstract background';
   }
   if (!Array.isArray(scriptJson.hashtags)) {
     scriptJson.hashtags = ['#shorts'];

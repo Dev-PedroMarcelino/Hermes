@@ -144,10 +144,12 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
 
     const queries = scriptJson.sections
       .map(s => s.visualSearchQuery)
-      .filter(Boolean)
-      .slice(0, 3);
+      .filter(Boolean);
+    const mainVisualTheme = scriptJson.mainVisualTheme || (customTopic ? `${customTopic} stock background` : '');
+
     const downloadedClips = await fetchStockVideos({
-      queries: queries.length ? queries : ['abstract technology background'],
+      queries: queries.length ? queries : [mainVisualTheme || 'cinematic background'],
+      mainVisualTheme,
       outputDirPath: workDir,
       pexelsApiKey: pexelsKey
     });
