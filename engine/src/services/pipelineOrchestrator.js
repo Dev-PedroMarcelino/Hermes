@@ -139,21 +139,19 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
       style: tenantData.contentConfig?.subtitleStyle || {}
     });
 
-    // ---- Stage 5: stock footage (Pexels) ------------------------------------
+    // ---- Stage 5: scene visuals (AI Image + Motion / Pexels) ---------------
     await setStatus(jobRef, JOB_STATUS.MEDIA_FETCH);
 
-    const queries = scriptJson.sections
-      .map(s => s.visualSearchQuery)
-      .filter(Boolean);
     const mainVisualTheme = scriptJson.mainVisualTheme || (customTopic ? `${customTopic} stock background` : '');
 
     const downloadedClips = await fetchStockVideos({
-      queries: queries.length ? queries : [mainVisualTheme || 'cinematic background'],
+      sections: scriptJson.sections || [],
       mainVisualTheme,
+      mediaTypePreference: scriptJson.mediaTypePreference || 'ai_image',
       outputDirPath: workDir,
       pexelsApiKey: pexelsKey
     });
-    console.log(`[Pipeline] ${downloadedClips.length} clipe(s) de fundo baixado(s).`);
+    console.log(`[Pipeline] ${downloadedClips.length} clipe(s) de fundo preparados para montagem.`);
 
     // ---- Stage 6: render ----------------------------------------------------
     await setStatus(jobRef, JOB_STATUS.VIDEO_RENDER);

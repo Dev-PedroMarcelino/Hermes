@@ -1,19 +1,8 @@
 import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
+import { generateAiImage, convertImageToMotionClip } from './aiImageService.js';
 
-/**
- * Downloads one vertical stock clip per visual query from Pexels.
- *
- * One clip per script section keeps the background changing through the video;
- * the previous single-query version made every short look identical.
- *
- * @param {Object} options
- * @param {Array<string>} options.queries English search terms, one per section
- * @param {string} options.outputDirPath Directory to save the MP4s
- * @param {string} options.pexelsApiKey
- * @returns {Promise<Array<string>>} Local paths of the downloaded clips
- */
 /**
  * Helper to query Pexels API with fallback attempts (portrait -> any orientation -> mainVisualTheme).
  */
@@ -58,106 +47,162 @@ async function searchPexelsCandidates({ query, mainVisualTheme, pexelsApiKey, us
 }
 
 /**
- * Downloads one vertical stock clip per visual query from Pexels.
+ * Downloads a video clip from Pexels and saves it locally.
+ */
+async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
+  const portraitFiles = (video.video_files || [])
+    .filter(f => f.width && f.height && f.height > f.width)
+    .sort((a, b) => a.height - b.height);
+  const videoFile =
+    portraitFiles.find(f => f.height >= 1280) || portraitFiles[0] || video.video_files?.[0];
+
+  if (!videoFile?.link) {
+    throw new Error('Nenhum link de arquivo disponível para o vídeo do Pexels.');
+  }
+
+  const download = await axios({
+    method: 'get',
+    url: videoFile.link,
+    responseType: 'stream',
+    timeout: 20000
+  });
+
+  return new Promise((resolve, reject) => {
+    const fileStream = fs.createWriteStream(filePath);
+    let finished = false;
+
+    const streamTimer = setTimeout(() => {
+      if (!finished) {
+        finished = true;
+        try { download.data.destroy(); } catch (e) {}
+        try { fileStream.destroy(); } catch (e) {}
+        fs.remove(filePath).catch(() => {});
+        reject(new Error(`Timeout excedido ao baixar clipe de "${matchedQuery}".`));
+      }
+    }, 25000);
+
+    download.data.pipe(fileStream);
+
+    fileStream.on('finish', () => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(streamTimer);
+        resolve(filePath);
+      }
+    });
+
+    fileStream.on('error', err => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(streamTimer);
+        fs.remove(filePath).catch(() => {});
+        reject(err);
+      }
+    });
+
+    download.data.on('error', err => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(streamTimer);
+        fs.remove(filePath).catch(() => {});
+        reject(err);
+      }
+    });
+  });
+}
+
+/**
+ * Hybrid Scene Media Collector:
+ * 1. For character & pop-culture scenes, generates detailed AI illustrations and turns them
+ *    into smooth 9:16 video clips with FFmpeg Ken Burns camera motion (zoom-in / zoom-out / pan).
+ * 2. Falls back to Pexels stock footage when requested or when AI image generation is unavailable.
  *
  * @param {Object} options
- * @param {Array<string>} options.queries English search terms, one per section
+ * @param {Array<Object>} [options.sections] Script sections with text, imagePrompt, visualSearchQuery
+ * @param {Array<string>} [options.queries] Legacy fallback query strings
  * @param {string} [options.mainVisualTheme] Core theme keywords for fallback search
+ * @param {string} [options.mediaTypePreference='ai_image'] 'ai_image' or 'stock_video'
  * @param {string} options.outputDirPath Directory to save the MP4s
  * @param {string} options.pexelsApiKey
- * @returns {Promise<Array<string>>} Local paths of the downloaded clips
+ * @returns {Promise<Array<string>>} Local paths of the downloaded/generated MP4 clips
  */
-export async function fetchStockVideos({ queries = [], mainVisualTheme = '', outputDirPath, pexelsApiKey }) {
+export async function fetchStockVideos({
+  sections = [],
+  queries = [],
+  mainVisualTheme = '',
+  mediaTypePreference = 'ai_image',
+  outputDirPath,
+  pexelsApiKey
+}) {
   await fs.ensureDir(outputDirPath);
 
-  if (!pexelsApiKey) {
-    console.warn('[MediaCollector] PEXELS_API_KEY ausente — o vídeo usará fundo sólido.');
-    return [];
-  }
+  // Normalize input items
+  const items = sections.length > 0
+    ? sections
+    : (queries.length > 0 ? queries.map(q => ({ visualSearchQuery: q })) : [{ visualSearchQuery: mainVisualTheme }]);
 
   const downloadedFiles = [];
   const usedVideoIds = new Set();
 
-  for (const [index, query] of queries.entries()) {
-    try {
-      const { video, matchedQuery } = await searchPexelsCandidates({
-        query: query || mainVisualTheme || 'cinematic background',
-        mainVisualTheme,
-        pexelsApiKey,
-        usedVideoIds
-      });
+  for (const [index, item] of items.entries()) {
+    const imagePrompt = item.imagePrompt || null;
+    const visualQuery = item.visualSearchQuery || mainVisualTheme || 'cinematic background';
+    const duration = item.durationEstSeconds || 6;
 
-      if (!video) {
-        console.warn(`[MediaCollector] Nenhum clipe relevante encontrado para "${query}".`);
-        continue;
+    let sceneClipPath = null;
+
+    // --- Strategy 1: AI Image Generation with Ken Burns Motion Effect ---
+    if (imagePrompt && mediaTypePreference !== 'stock_video') {
+      try {
+        console.log(`[MediaCollector] Gerando cena ${index + 1} com IA (Flux): "${imagePrompt.slice(0, 60)}..."`);
+        const imgPath = path.join(outputDirPath, `scene_${index}_art.jpg`);
+        const videoClipPath = path.join(outputDirPath, `scene_${index}_motion.mp4`);
+
+        await generateAiImage({
+          prompt: imagePrompt,
+          outputFilePath: imgPath,
+          width: 720,
+          height: 1280
+        });
+
+        await convertImageToMotionClip({
+          imagePath: imgPath,
+          outputVideoPath: videoClipPath,
+          duration,
+          motionIndex: index
+        });
+
+        sceneClipPath = videoClipPath;
+        console.log(`[MediaCollector] Cena ${index + 1} pronta com efeito Ken Burns: ${path.basename(videoClipPath)}`);
+      } catch (aiErr) {
+        console.warn(`[MediaCollector] Falha na geração por IA para cena ${index + 1} (${aiErr.message}). Tentando fallback Pexels...`);
       }
+    }
 
-      usedVideoIds.add(video.id);
-
-      // Prefer a genuinely portrait rendition, but accept horizontal (FFmpeg crops/scales to 1080x1920 anyway)
-      const portraitFiles = (video.video_files || [])
-        .filter(f => f.width && f.height && f.height > f.width)
-        .sort((a, b) => a.height - b.height);
-      const videoFile =
-        portraitFiles.find(f => f.height >= 1280) || portraitFiles[0] || video.video_files?.[0];
-
-      if (!videoFile?.link) continue;
-
-      const filePath = path.join(outputDirPath, `pexels_${index}_${video.id}.mp4`);
-      const download = await axios({
-        method: 'get',
-        url: videoFile.link,
-        responseType: 'stream',
-        timeout: 20000
-      });
-
-      await new Promise((resolve, reject) => {
-        const fileStream = fs.createWriteStream(filePath);
-        let finished = false;
-
-        const streamTimer = setTimeout(() => {
-          if (!finished) {
-            finished = true;
-            try { download.data.destroy(); } catch (e) {}
-            try { fileStream.destroy(); } catch (e) {}
-            fs.remove(filePath).catch(() => {});
-            reject(new Error(`Timeout excedido ao baixar clipe de "${matchedQuery}".`));
-          }
-        }, 25000);
-
-        download.data.pipe(fileStream);
-
-        fileStream.on('finish', () => {
-          if (!finished) {
-            finished = true;
-            clearTimeout(streamTimer);
-            resolve();
-          }
+    // --- Strategy 2: Pexels Stock Video Fallback ---
+    if (!sceneClipPath && pexelsApiKey) {
+      try {
+        const { video, matchedQuery } = await searchPexelsCandidates({
+          query: visualQuery,
+          mainVisualTheme,
+          pexelsApiKey,
+          usedVideoIds
         });
 
-        fileStream.on('error', err => {
-          if (!finished) {
-            finished = true;
-            clearTimeout(streamTimer);
-            fs.remove(filePath).catch(() => {});
-            reject(err);
-          }
-        });
+        if (video) {
+          usedVideoIds.add(video.id);
+          const pexelsClipPath = path.join(outputDirPath, `pexels_${index}_${video.id}.mp4`);
+          await downloadPexelsVideo({ video, filePath: pexelsClipPath, matchedQuery });
+          sceneClipPath = pexelsClipPath;
+          console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${visualQuery}" → ${path.basename(pexelsClipPath)}`);
+        }
+      } catch (pexelsErr) {
+        console.error(`[MediaCollector] Falha no Pexels para cena ${index + 1}:`, pexelsErr.message);
+      }
+    }
 
-        download.data.on('error', err => {
-          if (!finished) {
-            finished = true;
-            clearTimeout(streamTimer);
-            fs.remove(filePath).catch(() => {});
-            reject(err);
-          }
-        });
-      });
-
-      downloadedFiles.push(filePath);
-      console.log(`[MediaCollector] "${query}" (usou: "${matchedQuery}") → ${path.basename(filePath)}`);
-    } catch (error) {
-      console.error(`[MediaCollector] Falha buscando clipe ${index + 1}:`, error.message);
+    if (sceneClipPath) {
+      downloadedFiles.push(sceneClipPath);
     }
   }
 
