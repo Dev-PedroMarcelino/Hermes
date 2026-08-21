@@ -108,19 +108,20 @@ export default function MonitorProducao() {
     }
   };
 
-  const handleTentarNovamente = async (e, jobId) => {
+  const handleEnviarNovamente = async (e, jobId) => {
     if (e) e.stopPropagation();
     try {
       if (db) {
         await updateDoc(doc(db, 'video_jobs', jobId), {
           status: 'QUEUED',
           errorMessage: null,
+          renderProgress: null,
           updatedAt: new Date().toISOString()
         });
       }
     } catch (err) {
-      console.error('Erro ao reiniciar vídeo:', err.message);
-      alert('Não foi possível reiniciar o vídeo: ' + err.message);
+      console.error('Erro ao reenviar vídeo:', err.message);
+      alert('Não foi possível reenviar o vídeo: ' + err.message);
     }
   };
 
@@ -329,13 +330,36 @@ export default function MonitorProducao() {
                         </h5>
                       </div>
 
-                      <button
-                        onClick={(e) => handleDeletarVideo(e, job.id)}
-                        className="btn-danger"
-                        style={{ padding: '4px 8px', borderRadius: '6px' }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          onClick={(e) => handleEnviarNovamente(e, job.id)}
+                          className="btn-secondary"
+                          title="Reiniciar este vídeo do zero na esteira de produção"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            background: 'rgba(0, 255, 135, 0.10)',
+                            color: '#00ff87',
+                            border: '1px solid rgba(0, 255, 135, 0.3)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <RefreshCw size={12} /> Enviar Novamente
+                        </button>
+                        <button
+                          onClick={(e) => handleDeletarVideo(e, job.id)}
+                          className="btn-danger"
+                          style={{ padding: '6px 8px', borderRadius: '8px' }}
+                          title="Excluir vídeo"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
 
                     {/* BARRA DE PROGRESSO EM TEMPO REAL */}
@@ -387,7 +411,7 @@ export default function MonitorProducao() {
                             </span>
                           )}
                           <button
-                            onClick={(e) => handleTentarNovamente(e, job.id)}
+                            onClick={(e) => handleEnviarNovamente(e, job.id)}
                             className="btn-secondary"
                             style={{
                               display: 'inline-flex',
@@ -406,7 +430,7 @@ export default function MonitorProducao() {
                               transition: 'all 0.2s ease'
                             }}
                           >
-                            <RefreshCw size={13} /> Tentar Novamente
+                            <RefreshCw size={13} /> Enviar Novamente
                           </button>
                         </div>
                       )}

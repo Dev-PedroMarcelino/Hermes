@@ -451,7 +451,7 @@ export default function ChannelDetailModal({ channel, onClose }) {
                               borderRadius: '8px'
                             }}
                           >
-                            <RefreshCw size={13} /> Tentar Novamente
+                            <RefreshCw size={13} /> Enviar Novamente
                           </button>
                         )}
                       </div>
