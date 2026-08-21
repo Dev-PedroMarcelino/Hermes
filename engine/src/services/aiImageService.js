@@ -31,7 +31,7 @@ export async function generateAiImage({
     `${prompt}, highly detailed, cinematic lighting, 8k resolution, vertical 9:16 wallpaper`
   );
 
-  const models = ['flux', 'turbo', 'default'];
+  const models = ['turbo', 'default', 'flux'];
   let lastError = null;
 
   for (const model of models) {
@@ -44,7 +44,7 @@ export async function generateAiImage({
         method: 'get',
         url,
         responseType: 'stream',
-        timeout: 25000
+        timeout: 18000
       });
 
       await new Promise((resolve, reject) => {
@@ -59,7 +59,7 @@ export async function generateAiImage({
             fs.remove(outputFilePath).catch(() => {});
             reject(new Error(`Timeout ao baixar imagem do modelo ${model}.`));
           }
-        }, 30000);
+        }, 22000);
 
         response.data.pipe(fileStream);
 
