@@ -92,6 +92,13 @@ export function isOriginAllowed(origin) {
   if (!origin) return false;
   if (config.allowedOrigins.includes(origin)) return true;
 
+  // Allow localhost for local development
+  if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) return true;
+
+  // Allow all Vercel domains for dashboard deployments (e.g. hermes-lake-phi.vercel.app)
+  if (/^https:\/\/[a-z0-9-_.]+\.vercel\.app$/i.test(origin)) return true;
+
   if (config.vercelPreviewPrefix) {
     const previewPattern = new RegExp(
       `^https://${config.vercelPreviewPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[a-z0-9-]*\\.vercel\\.app$`
