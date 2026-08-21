@@ -39,7 +39,7 @@ export const config = {
    * Free hosting tiers usually do not offer a separate background-worker
    * service, so co-hosting keeps the factory running at no cost.
    */
-  runWorkerInProcess: process.env.ENABLE_WORKER === 'true',
+  runWorkerInProcess: process.env.ENABLE_WORKER !== 'false',
   /**
    * How Instagram gets a downloadable HTTPS URL for the rendered video:
    * 'engine' (free, served by this process) or 'storage' (Firebase Cloud
