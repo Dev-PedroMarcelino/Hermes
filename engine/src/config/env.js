@@ -61,6 +61,8 @@ export const config = {
   },
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   pexelsApiKey: process.env.PEXELS_API_KEY || '',
+  googleSearchApiKey: process.env.GOOGLE_SEARCH_API_KEY || '',
+  googleSearchCx: process.env.GOOGLE_SEARCH_CX || '',
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID || '',
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',

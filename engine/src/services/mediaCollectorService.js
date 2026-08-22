@@ -2,9 +2,10 @@ import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
 import { generateAiImage, convertImageToMotionClip } from './aiImageService.js';
+import { fetchRealGoogleImage } from './googleImageService.js';
 
 /**
- * Helper to query Pexels API with fallback attempts (portrait -> any orientation -> mainVisualTheme).
+ * Helper to query Pexels API with fallback attempts.
  */
 async function searchPexelsCandidates({ query, mainVisualTheme, pexelsApiKey, usedVideoIds }) {
   const attempts = [
@@ -113,15 +114,16 @@ async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
 
 /**
  * Hybrid Scene Media Collector:
- * 1. For character & pop-culture scenes, generates detailed AI illustrations and turns them
- *    into smooth 9:16 video clips with FFmpeg Ken Burns camera motion (zoom-in / zoom-out / pan).
- * 2. Falls back to Pexels stock footage when requested or when AI image generation is unavailable.
+ * 1. Google Real Image Search: Downloads real Google images (screenshots, trailers, official art)
+ *    and converts them to vertical 9:16 motion clips with Ken Burns camera effect.
+ * 2. AI Image Generation (Flux model) + Ken Burns Motion.
+ * 3. Pexels Stock Video Fallback.
  *
  * @param {Object} options
  * @param {Array<Object>} [options.sections] Script sections with text, imagePrompt, visualSearchQuery
  * @param {Array<string>} [options.queries] Legacy fallback query strings
  * @param {string} [options.mainVisualTheme] Core theme keywords for fallback search
- * @param {string} [options.mediaTypePreference='ai_image'] 'ai_image' or 'stock_video'
+ * @param {string} [options.mediaTypePreference='google_image'] 'google_image', 'ai_image', or 'stock_video'
  * @param {string} options.outputDirPath Directory to save the MP4s
  * @param {string} options.pexelsApiKey
  * @returns {Promise<Array<string>>} Local paths of the downloaded/generated MP4 clips
@@ -130,7 +132,7 @@ export async function fetchStockVideos({
   sections = [],
   queries = [],
   mainVisualTheme = '',
-  mediaTypePreference = 'ai_image',
+  mediaTypePreference = 'google_image',
   outputDirPath,
   pexelsApiKey
 }) {
@@ -143,6 +145,7 @@ export async function fetchStockVideos({
 
   const downloadedFiles = [];
   const usedVideoIds = new Set();
+  const usedImageUrls = new Set();
 
   for (const [index, item] of items.entries()) {
     const imagePrompt = item.imagePrompt || null;
@@ -151,8 +154,35 @@ export async function fetchStockVideos({
 
     let sceneClipPath = null;
 
-    // --- Strategy 1: AI Image Generation with Ken Burns Motion Effect ---
-    if (imagePrompt && mediaTypePreference !== 'stock_video') {
+    // --- Strategy 1: Google Real Image Search + Ken Burns Motion Effect ---
+    if (mediaTypePreference === 'google_image' || mediaTypePreference === 'google' || mediaTypePreference === 'real_image') {
+      try {
+        console.log(`[MediaCollector] Buscando imagem REAL no Google para cena ${index + 1}: "${visualQuery}"`);
+        const imgPath = path.join(outputDirPath, `scene_${index}_google.jpg`);
+        const videoClipPath = path.join(outputDirPath, `scene_${index}_motion.mp4`);
+
+        await fetchRealGoogleImage({
+          query: visualQuery,
+          outputPath: imgPath,
+          usedUrls: usedImageUrls
+        });
+
+        await convertImageToMotionClip({
+          imagePath: imgPath,
+          outputVideoPath: videoClipPath,
+          duration,
+          motionIndex: index
+        });
+
+        sceneClipPath = videoClipPath;
+        console.log(`[MediaCollector] Cena ${index + 1} pronta com imagem do Google + Ken Burns: ${path.basename(videoClipPath)}`);
+      } catch (googleErr) {
+        console.warn(`[MediaCollector] Falha na busca no Google para cena ${index + 1} (${googleErr.message}). Tentando fallback IA/Pexels...`);
+      }
+    }
+
+    // --- Strategy 2: AI Image Generation (Flux 8K) + Ken Burns Motion Effect ---
+    if (!sceneClipPath && imagePrompt && mediaTypePreference !== 'stock_video') {
       try {
         console.log(`[MediaCollector] Gerando cena ${index + 1} com IA (Flux): "${imagePrompt.slice(0, 60)}..."`);
         const imgPath = path.join(outputDirPath, `scene_${index}_art.jpg`);
@@ -173,13 +203,13 @@ export async function fetchStockVideos({
         });
 
         sceneClipPath = videoClipPath;
-        console.log(`[MediaCollector] Cena ${index + 1} pronta com efeito Ken Burns: ${path.basename(videoClipPath)}`);
+        console.log(`[MediaCollector] Cena ${index + 1} pronta com IA (Flux) + Ken Burns: ${path.basename(videoClipPath)}`);
       } catch (aiErr) {
         console.warn(`[MediaCollector] Falha na geração por IA para cena ${index + 1} (${aiErr.message}). Tentando fallback Pexels...`);
       }
     }
 
-    // --- Strategy 2: Pexels Stock Video Fallback ---
+    // --- Strategy 3: Pexels Stock Video Fallback ---
     if (!sceneClipPath && pexelsApiKey) {
       try {
         const { video, matchedQuery } = await searchPexelsCandidates({

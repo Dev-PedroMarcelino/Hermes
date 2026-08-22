@@ -44,13 +44,13 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 {
   "title": "Título chamativo do vídeo",
   "hook": "Frase de impacto inicial dos primeiros 3 segundos para prender a atenção",
-  "mainVisualTheme": "Palavras-chave em inglês representando o TEMA VISUAL PRINCIPAL do vídeo (ex: 'gta vice city miami neon sports car')",
-  "mediaTypePreference": "ai_image ou stock_video (defina 'stock_video' se o operador pediu vídeos reais ou se o tema for de banco de imagem; caso contrário 'ai_image')",
+  "mainVisualTheme": "Palavras-chave em inglês representando o TEMA VISUAL PRINCIPAL do vídeo (ex: 'GTA 6 Vice City official screenshot')",
+  "mediaTypePreference": "google_image",
   "sections": [
     {
       "text": "Texto exato que será falado pela voz sintetizada",
-      "imagePrompt": "Prompt em inglês altamente realista e descritivo para gerar arte 8k cinematográfica por IA em 9:16 vertical da cena exata (ex para GTA 6: 'Grand Theft Auto VI Lucia and Jason driving red convertible supercar through Vice City Miami ocean drive at sunset, photorealistic 8k game screenshot style, Unreal Engine 5 render, cinematic lighting, 9:16 vertical')",
-      "visualSearchQuery": "Keywords em inglês para busca de vídeo stock como fallback (ex: 'miami vice city sports car night')",
+      "imagePrompt": "Prompt em inglês altamente realista e descritivo para gerar arte 8k por IA (ex para GTA 6: 'Grand Theft Auto VI Lucia and Jason Vice City Miami ocean drive sunset 8k')",
+      "visualSearchQuery": "Keywords em inglês EXTREMAMENTE ESPECÍFICAS para buscar fotos/screenshots REAIS no Google (ex para GTA 6: 'GTA 6 Vice City Lucia Jason screenshot' ou 'GTA 6 official trailer 4k')",
       "durationEstSeconds": 6
     }
   ],
@@ -62,8 +62,8 @@ REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS:
 1. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
 2. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
 3. CRÍTICO PARA AS IMAGENS E MÍDIA:
-   - Se o operador pediu vídeos reais (ex: 'use vídeo', 'stock_video', 'pexels'), defina "mediaTypePreference": "stock_video".
-   - Se usar 'ai_image', cada seção DEVE ter um 'imagePrompt' rico em inglês retratando a cena exata (ex: 'photorealistic 8k game screenshot style', 'hyperrealistic 3D render', 'cinematic lighting'). NUNCA use termos genéricos de baixa qualidade.
+   - Defina 'mediaTypePreference' como 'google_image' para buscar imagens REAIS no Google correspondentes ao tema do vídeo (ex: fotos/screenshots do GTA 6, trailers, logos, personagens reais).
+   - Se o operador pedir explicitamente 'stock_video' ou 'ai_image', respeite a preferência solicitada.
 4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 
