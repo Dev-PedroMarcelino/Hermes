@@ -1,3 +1,4 @@
+// Hermes Omnichannel Content Factory Dashboard
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from './firebase';
