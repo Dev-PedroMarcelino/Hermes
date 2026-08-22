@@ -153,6 +153,7 @@ export async function convertImageToMotionClip({
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-tune', 'stillimage',
+        '-threads', '1',
         '-t', String(duration),
         '-pix_fmt', 'yuv420p'
       ])
