@@ -26,12 +26,12 @@ export async function generateAiImage({
 }) {
   await fs.ensureDir(path.dirname(outputFilePath));
 
-  // Sanitize prompt for URL query
+  // Sanitize prompt for URL query with quality boosters
   const cleanPrompt = encodeURIComponent(
-    `${prompt}, highly detailed, cinematic lighting, 8k resolution, vertical 9:16 wallpaper`
+    `${prompt}, photorealistic, masterpiece, hyperrealistic 8k resolution, Unreal Engine 5 render, cinematic lighting, sharp focus, 9:16 vertical`
   );
 
-  const models = ['turbo', 'default', 'flux'];
+  const models = ['flux', 'turbo', 'default'];
   let lastError = null;
 
   for (const model of models) {

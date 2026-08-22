@@ -44,13 +44,13 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 {
   "title": "Título chamativo do vídeo",
   "hook": "Frase de impacto inicial dos primeiros 3 segundos para prender a atenção",
-  "mainVisualTheme": "Palavras-chave em inglês representando o TEMA VISUAL PRINCIPAL do vídeo (ex: 'star wars space sci-fi galaxy battle' ou 'batman dark knight superhero city night')",
-  "mediaTypePreference": "ai_image",
+  "mainVisualTheme": "Palavras-chave em inglês representando o TEMA VISUAL PRINCIPAL do vídeo (ex: 'gta vice city miami neon sports car')",
+  "mediaTypePreference": "ai_image ou stock_video (defina 'stock_video' se o operador pediu vídeos reais ou se o tema for de banco de imagem; caso contrário 'ai_image')",
   "sections": [
     {
       "text": "Texto exato que será falado pela voz sintetizada",
-      "imagePrompt": "Prompt em inglês altamente descritivo para gerar uma ilustração/arte cinematográfica por IA em 9:16 vertical da cena exata (ex para Batman: 'Batman Absolute standing menacingly on a gothic Gotham gargoyle under heavy rain, dark comic book art style, glowing chest logo, dramatic lighting, 8k vertical 9:16'; ex para Star Wars: 'Anakin Skywalker wielding blue lightsaber in Jedi Temple, cinematic star wars portrait, epic lighting, 8k vertical 9:16')",
-      "visualSearchQuery": "Keywords em inglês para busca de vídeo stock como fallback (ex: 'dark knight city night rain')",
+      "imagePrompt": "Prompt em inglês altamente realista e descritivo para gerar arte 8k cinematográfica por IA em 9:16 vertical da cena exata (ex para GTA 6: 'Grand Theft Auto VI Lucia and Jason driving red convertible supercar through Vice City Miami ocean drive at sunset, photorealistic 8k game screenshot style, Unreal Engine 5 render, cinematic lighting, 9:16 vertical')",
+      "visualSearchQuery": "Keywords em inglês para busca de vídeo stock como fallback (ex: 'miami vice city sports car night')",
       "durationEstSeconds": 6
     }
   ],
@@ -61,9 +61,9 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS:
 1. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
 2. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
-3. CRÍTICO PARA AS IMAGENS: Cada seção DEVE ter um 'imagePrompt' rico em inglês retratando o personagem ou cenário exato correspondente àquele momento do roteiro.
-   - Sempre especifique estilo visual adequado (ex: 'dark DC comic book style', 'cinematic movie shot', 'hyperrealistic digital painting').
-   - NUNCA deixe o 'imagePrompt' genérico. Coloque o nome do personagem, ação, atmosfera e iluminação.
+3. CRÍTICO PARA AS IMAGENS E MÍDIA:
+   - Se o operador pediu vídeos reais (ex: 'use vídeo', 'stock_video', 'pexels'), defina "mediaTypePreference": "stock_video".
+   - Se usar 'ai_image', cada seção DEVE ter um 'imagePrompt' rico em inglês retratando a cena exata (ex: 'photorealistic 8k game screenshot style', 'hyperrealistic 3D render', 'cinematic lighting'). NUNCA use termos genéricos de baixa qualidade.
 4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 
