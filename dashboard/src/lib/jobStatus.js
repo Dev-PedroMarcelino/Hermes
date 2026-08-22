@@ -7,7 +7,7 @@ const STAGES = {
   QUEUED: { percent: 5, step: 0, label: 'Na fila aguardando o worker' },
   SCRIPTING: { percent: 15, step: 1, label: '1/6 · Gerando roteiro com o Gemini' },
   AUDIO_GEN: { percent: 32, step: 2, label: '2/6 · Sintetizando locução neural (EdgeTTS)' },
-  MEDIA_FETCH: { percent: 48, step: 3, label: '3/6 · Baixando clipes de fundo (Pexels)' },
+  MEDIA_FETCH: { percent: 48, step: 3, label: '3/6 · Coletando imagens reais do Google para cada cena' },
   VIDEO_RENDER: { percent: 66, step: 4, label: '4/6 · Renderizando vídeo 9:16 com legendas (FFmpeg)' },
   READY_TO_UPLOAD: { percent: 100, step: 6, label: 'Vídeo pronto! (Conecte uma rede social para publicar)' },
   UPLOADING: { percent: 90, step: 5, label: '5/6 · Publicando nas redes conectadas' },
