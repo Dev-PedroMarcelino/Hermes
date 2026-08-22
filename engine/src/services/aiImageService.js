@@ -132,23 +132,14 @@ export async function convertImageToMotionClip({
   const totalFrames = Math.max(25, Math.round(duration * fps));
   const motionStyle = motionIndex % 3;
 
-  let zoompanFilter;
-  if (motionStyle === 0) {
-    // Smooth Zoom-In towards center
-    zoompanFilter = `zoompan=z='min(zoom+0.0015,1.20)':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=${fps}`;
-  } else if (motionStyle === 1) {
-    // Smooth Zoom-Out from 1.20x back to 1.0x
-    zoompanFilter = `zoompan=z='if(lte(zoom,1.0),1.20,max(1.0,zoom-0.0015))':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=${fps}`;
-  } else {
-    // Cinematic Pan Upwards
-    zoompanFilter = `zoompan=z='1.15':d=${totalFrames}:x='iw/2-(iw/zoom/2)':y='(ih/2-(ih/zoom/2))*(1-on/${totalFrames})':s=1080x1920:fps=${fps}`;
-  }
+  // Steady, crisp 1080x1920 vertical scaling without shaky/jittery zoompan artifacts
+  const scaleCropFilter = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=25';
 
   return new Promise((resolve, reject) => {
     ffmpeg()
       .input(imagePath)
       .inputOptions(['-loop', '1', '-t', String(duration)])
-      .videoFilters([zoompanFilter, 'format=yuv420p'])
+      .videoFilters([scaleCropFilter, 'format=yuv420p'])
       .outputOptions([
         '-c:v', 'libx264',
         '-preset', 'ultrafast',

@@ -163,8 +163,10 @@ export async function fetchStockVideos({
 
         await fetchRealGoogleImage({
           query: visualQuery,
+          imagePrompt,
           outputPath: imgPath,
-          usedUrls: usedImageUrls
+          usedUrls: usedImageUrls,
+          sceneIndex: index
         });
 
         await convertImageToMotionClip({
