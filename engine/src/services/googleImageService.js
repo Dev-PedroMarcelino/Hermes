@@ -3,42 +3,46 @@ import fs from 'fs-extra';
 import path from 'path';
 import { config } from '../config/env.js';
 
-// Filters out only actual spam, low-res cliparts, and vector websites
-const BLOCKED_URL_PATTERNS = [
-  /freepik\./i,
-  /vecteezy\./i,
-  /shutterstock\./i,
-  /alamy\./i,
-  /istockphoto\./i,
-  /dreamstime\./i,
-  /deviantart\./i,
+// Domains and URL patterns known for spam, clickbait, vector sites, or unrelated junk
+const BAD_DOMAINS = [
+  /vazounudes/i,
+  /xgozo/i,
+  /porn/i,
+  /sex/i,
+  /peritoanimal/i,
+  /instalguru/i,
+  /vecteezy/i,
+  /freepik/i,
+  /alamy/i,
+  /shutterstock/i,
+  /dreamstime/i,
+  /istockphoto/i,
+  /thegirlonbloor/i,
+  /feeds\.frgimages/i,
+  /thesitebase/i,
   /pinterest\./i,
   /pinimg\./i,
-  /cosplay/i,
-  /action[-_]?figure/i,
-  /toy/i,
-  /meme/i,
+  /deviantart\./i,
   /clipart/i,
   /sketch/i,
-  /drawing/i,
   /caricature/i,
   /watermark/i,
   /\.svg$/i,
   /\.gif$/i
 ];
 
-function isGoodImageUrl(url) {
+function isReputableImage(url) {
   if (!url || typeof url !== 'string') return false;
   if (url.length < 15) return false;
-  return !BLOCKED_URL_PATTERNS.some(pattern => pattern.test(url));
+  return !BAD_DOMAINS.some(bad => bad.test(url));
 }
 
 /**
  * Searches and downloads REAL images directly from Google / Bing image search.
- * Just like a human searching on Google Images.
+ * Validates domain reputability and image resolution.
  *
  * @param {Object} options
- * @param {string} options.query Search query (e.g. "GTA 6 Lucia", "GTA 6 Vice City")
+ * @param {string} options.query Clean search query (e.g. "GTA 6 Lucia", "GTA 6 Vice City")
  * @param {string} options.outputPath Local file path to save the image (.jpg)
  * @param {Set<string>} [options.usedUrls] Set of image URLs already downloaded in this job
  * @returns {Promise<string>} Path to saved real image
@@ -60,16 +64,16 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5'
       },
-      timeout: 7000
+      timeout: 8000
     });
 
     const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
     for (const imgUrl of matches.slice(0, 15)) {
-      if (imgUrl && !usedUrls.has(imgUrl) && isGoodImageUrl(imgUrl)) {
+      if (imgUrl && !usedUrls.has(imgUrl) && isReputableImage(imgUrl)) {
         usedUrls.add(imgUrl);
         const saved = await downloadImage(imgUrl, outputPath);
         if (saved) {
-          console.log(`[GoogleImage] Foto real baixada para "${cleanQuery}": ${path.basename(imgUrl)}`);
+          console.log(`[GoogleImage] Foto real oficial baixada para "${cleanQuery}": ${path.basename(imgUrl)}`);
           return saved;
         }
       }
@@ -95,7 +99,7 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
 
       const items = response.data?.items || [];
       for (const item of items) {
-        if (item.link && !usedUrls.has(item.link) && isGoodImageUrl(item.link)) {
+        if (item.link && !usedUrls.has(item.link) && isReputableImage(item.link)) {
           usedUrls.add(item.link);
           const saved = await downloadImage(item.link, outputPath);
           if (saved) return saved;
@@ -111,7 +115,7 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
     const pages = response.data?.query?.pages || {};
     for (const pageId in pages) {
       const imgUrl = pages[pageId]?.thumbnail?.source;
-      if (imgUrl && !usedUrls.has(imgUrl) && isGoodImageUrl(imgUrl)) {
+      if (imgUrl && !usedUrls.has(imgUrl) && isReputableImage(imgUrl)) {
         usedUrls.add(imgUrl);
         const saved = await downloadImage(imgUrl, outputPath);
         if (saved) return saved;
@@ -119,11 +123,11 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
     }
   } catch (err) {}
 
-  throw new Error(`Nenhuma imagem real encontrada na web para: "${query}"`);
+  throw new Error(`Nenhuma imagem real encontrada para: "${query}"`);
 }
 
 /**
- * Downloads image directly with arraybuffer / stream validation.
+ * Downloads image directly with arraybuffer validation.
  */
 async function downloadImage(url, outputPath) {
   try {

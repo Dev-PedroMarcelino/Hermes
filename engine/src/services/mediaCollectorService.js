@@ -4,28 +4,41 @@ import path from 'path';
 import { convertImageToMotionClip } from './aiImageService.js';
 import { fetchRealGoogleImage } from './googleImageService.js';
 
+// Abstract words, transitional phrases or fillers that ruin image searches
+const FORBIDDEN_WORDS_REGEX = /\b(anteriores|anterior|antigo|como|olha|veja|isso|quando|porque|sobre|mais|menos|detalhe|curiosidade|historia|evolucao|comparison|compare|previous|history|about|how|why|details|framework|flight|shoes|tenis|logo|banner|icon)\b/gi;
+
 /**
- * Combines theme and scene query cleanly without duplicate words.
+ * Combines theme and scene query cleanly into a concrete physical search term.
  */
-function buildCleanSceneQuery(mainTheme = '', sceneQuery = '') {
-  const cleanMain = (mainTheme || '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
-  const cleanScene = (sceneQuery || '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+function buildConcreteSceneQuery(mainTheme = '', sceneQuery = '', sceneIndex = 0) {
+  const cleanMain = (mainTheme || '').replace(FORBIDDEN_WORDS_REGEX, '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const cleanScene = (sceneQuery || '').replace(FORBIDDEN_WORDS_REGEX, '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
 
-  if (!cleanScene) return cleanMain || 'GTA 6';
-  if (!cleanMain) return cleanScene;
+  // If the scene query has valid specific words, combine them with main theme
+  if (cleanScene && cleanScene.length > 2) {
+    const mainWords = cleanMain.split(/\s+/).filter(Boolean);
+    const sceneWords = cleanScene.split(/\s+/).filter(Boolean);
+    const combined = [...mainWords];
 
-  // Split into words and combine without duplication
-  const mainWords = cleanMain.split(/\s+/).filter(Boolean);
-  const sceneWords = cleanScene.split(/\s+/).filter(Boolean);
-  const combined = [...mainWords];
-
-  for (const word of sceneWords) {
-    if (!combined.some(existing => existing.toLowerCase() === word.toLowerCase())) {
-      combined.push(word);
+    for (const word of sceneWords) {
+      if (!combined.some(existing => existing.toLowerCase() === word.toLowerCase())) {
+        combined.push(word);
+      }
     }
+    return combined.join(' ');
   }
 
-  return combined.join(' ');
+  // Fallback to structured per-scene visual angles
+  const theme = cleanMain || 'GTA 6';
+  const defaultAngles = [
+    theme,
+    `${theme} main characters`,
+    `${theme} landscape scenery`,
+    `${theme} action scene`,
+    `${theme} trailer screenshot`
+  ];
+
+  return defaultAngles[sceneIndex % defaultAngles.length];
 }
 
 /**
@@ -173,16 +186,15 @@ export async function fetchStockVideos({
     const rawVisualQuery = (item.visualSearchQuery || '').trim();
     const mainTheme = (mainVisualTheme || '').trim();
 
-    // Clean, natural query (e.g. "GTA 6 Lucia", "GTA 6 Vice City")
-    const cleanQuery = buildCleanSceneQuery(mainTheme, rawVisualQuery);
+    // Clean, concrete query anchored to the topic
+    const concreteQuery = buildConcreteSceneQuery(mainTheme, rawVisualQuery, index);
     const duration = item.durationEstSeconds || 6;
     let sceneClipPath = null;
 
     // --- Strategy 1: Direct Google / Bing Real Image Search ---
     if (mediaTypePreference !== 'stock_video') {
       const searchAttempts = [
-        cleanQuery,
-        rawVisualQuery || null,
+        concreteQuery,
         mainTheme || null
       ].filter(Boolean);
 
@@ -219,7 +231,7 @@ export async function fetchStockVideos({
     if (!sceneClipPath && pexelsApiKey) {
       try {
         const { video, matchedQuery } = await searchPexelsCandidates({
-          query: cleanQuery,
+          query: concreteQuery,
           mainVisualTheme,
           pexelsApiKey,
           usedVideoIds
@@ -231,7 +243,7 @@ export async function fetchStockVideos({
           await downloadPexelsVideo({ video, filePath: pexelsClipPath, matchedQuery });
           sceneClipPath = pexelsClipPath;
           lastSuccessfulClip = pexelsClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${cleanQuery}" → ${path.basename(pexelsClipPath)}`);
+          console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${concreteQuery}" → ${path.basename(pexelsClipPath)}`);
         }
       } catch (pexelsErr) {
         console.error(`[MediaCollector] Falha no Pexels para cena ${index + 1}:`, pexelsErr.message);
