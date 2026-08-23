@@ -62,8 +62,9 @@ REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS:
 1. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
 2. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
 3. CRÍTICO PARA AS IMAGENS E MÍDIA:
-   - Defina 'mediaTypePreference' como 'google_image' para buscar imagens REAIS no Google correspondentes ao tema do vídeo (ex: fotos/screenshots do GTA 6, trailers, logos, personagens reais).
-   - Se o operador pedir explicitamente 'stock_video' ou 'ai_image', respeite a preferência solicitada.
+   - Toda 'visualSearchQuery' DEVE OBRIGATORIAMENTE começar com o nome exato do PERSONAGEM / FILME / JOGO PRINCIPAL + detalhe da cena em inglês (ex para Vingadores: 'Avengers Endgame Iron Man Thanos battle scene 4k', 'Avengers Endgame Captain America Mjolnir'; ex para GTA 6: 'GTA 6 Lucia Jason official screenshot', 'GTA 6 Vice City Miami beach supercar').
+   - NUNCA use termos abstratos, metafóricos ou frases genéricas em 'visualSearchQuery' (como 'a menor chance', 'inimigos', 'lugar bonito').
+   - Foque sempre em buscar pôsteres oficiais, screenshots reais de 1080p/4k ou cenas oficiais do filme/jogo.
 4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 
