@@ -5,6 +5,31 @@ import { convertImageToMotionClip } from './aiImageService.js';
 import { fetchRealGoogleImage } from './googleImageService.js';
 
 /**
+ * Combines theme and scene query cleanly without duplicate words or marketing noise.
+ */
+function buildCleanSceneQuery(mainTheme = '', sceneQuery = '') {
+  const forbidden = /\b(poster|cover|boxart|box\s*art|logo|wallpaper|wallpapers|fanart|art|promo|collage)\b/gi;
+  const cleanMain = mainTheme.replace(forbidden, '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const cleanScene = sceneQuery.replace(forbidden, '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+
+  if (!cleanScene) return cleanMain || 'trailer still gameplay screenshot';
+  if (!cleanMain) return cleanScene;
+
+  // Split into words and combine without duplication
+  const mainWords = cleanMain.split(/\s+/).filter(Boolean);
+  const sceneWords = cleanScene.split(/\s+/).filter(Boolean);
+  const combined = [...mainWords];
+
+  for (const word of sceneWords) {
+    if (!combined.some(existing => existing.toLowerCase() === word.toLowerCase())) {
+      combined.push(word);
+    }
+  }
+
+  return combined.join(' ');
+}
+
+/**
  * Helper to query Pexels API with fallback attempts.
  */
 async function searchPexelsCandidates({ query, mainVisualTheme, pexelsApiKey, usedVideoIds }) {
@@ -114,7 +139,7 @@ async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
 
 /**
  * Real Web Image Media Collector:
- * Fast, robust collection of 100% REAL photos from the web, strictly anchored to the main franchise/topic.
+ * Fast, robust collection of 100% REAL clean capture stills from the web, strictly anchored to unique elements.
  *
  * @param {Object} options
  * @param {Array<Object>} [options.sections] Script sections with text, visualSearchQuery
@@ -149,24 +174,21 @@ export async function fetchStockVideos({
     const rawVisualQuery = (item.visualSearchQuery || '').trim();
     const mainTheme = (mainVisualTheme || '').trim();
 
-    // Ensure the main theme / franchise is always anchored to every search query
-    const anchoredQuery = mainTheme && !rawVisualQuery.toLowerCase().includes(mainTheme.toLowerCase().slice(0, 8))
-      ? `${mainTheme} ${rawVisualQuery}`
-      : (rawVisualQuery || mainTheme || 'cinematic 4k wallpaper');
-
+    // Build a clean, deduplicated, topic-anchored query for the scene
+    const cleanQuery = buildCleanSceneQuery(mainTheme, rawVisualQuery);
     const duration = item.durationEstSeconds || 6;
     let sceneClipPath = null;
 
-    // --- Strategy 1: Real Web Image Search (Google / Bing / Wikimedia) ---
+    // --- Strategy 1: Real Web Image Search (Clean in-game/movie capture stills) ---
     if (mediaTypePreference !== 'stock_video') {
       const searchAttempts = [
-        anchoredQuery,
-        mainTheme ? `${mainTheme} official 4k` : null
+        cleanQuery,
+        mainTheme ? `${mainTheme} in-game screenshot` : null
       ].filter(Boolean);
 
       for (const queryToTry of searchAttempts) {
         try {
-          console.log(`[MediaCollector] Buscando foto REAL na web para cena ${index + 1}: "${queryToTry}"`);
+          console.log(`[MediaCollector] Buscando captura limpa na web para cena ${index + 1}: "${queryToTry}"`);
           const imgPath = path.join(outputDirPath, `scene_${index}_real.jpg`);
           const videoClipPath = path.join(outputDirPath, `scene_${index}_motion.mp4`);
 
@@ -185,7 +207,7 @@ export async function fetchStockVideos({
 
           sceneClipPath = videoClipPath;
           lastSuccessfulClip = videoClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} pronta com foto REAL: ${path.basename(videoClipPath)}`);
+          console.log(`[MediaCollector] Cena ${index + 1} pronta com captura limpa REAL: ${path.basename(videoClipPath)}`);
           break;
         } catch (googleErr) {
           console.warn(`[MediaCollector] Tentativa para "${queryToTry}" falhou: ${googleErr.message}`);
@@ -197,7 +219,7 @@ export async function fetchStockVideos({
     if (!sceneClipPath && pexelsApiKey) {
       try {
         const { video, matchedQuery } = await searchPexelsCandidates({
-          query: anchoredQuery,
+          query: cleanQuery,
           mainVisualTheme,
           pexelsApiKey,
           usedVideoIds
@@ -209,7 +231,7 @@ export async function fetchStockVideos({
           await downloadPexelsVideo({ video, filePath: pexelsClipPath, matchedQuery });
           sceneClipPath = pexelsClipPath;
           lastSuccessfulClip = pexelsClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${anchoredQuery}" → ${path.basename(pexelsClipPath)}`);
+          console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${cleanQuery}" → ${path.basename(pexelsClipPath)}`);
         }
       } catch (pexelsErr) {
         console.error(`[MediaCollector] Falha no Pexels para cena ${index + 1}:`, pexelsErr.message);

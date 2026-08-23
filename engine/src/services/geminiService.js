@@ -44,13 +44,13 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 {
   "title": "Título chamativo do vídeo",
   "hook": "Frase de impacto inicial dos primeiros 3 segundos para prender a atenção",
-  "mainVisualTheme": "Palavras-chave em inglês representando o TEMA VISUAL PRINCIPAL do vídeo (ex: 'GTA 6 Vice City official screenshot')",
+  "mainVisualTheme": "Clean English keywords representing the MAIN VISUAL THEME using ONLY clean capture terms and unique identifiers (ex for GTA 6: 'GTA 6 Vice City Lucia Jason gameplay screenshot trailer still')",
   "mediaTypePreference": "google_image",
   "sections": [
     {
       "text": "Texto exato que será falado pela voz sintetizada",
-      "imagePrompt": "Prompt em inglês altamente realista e descritivo para gerar arte 8k por IA (ex para GTA 6: 'Grand Theft Auto VI Lucia and Jason Vice City Miami ocean drive sunset 8k')",
-      "visualSearchQuery": "Keywords em inglês EXTREMAMENTE ESPECÍFICAS para buscar fotos/screenshots REAIS no Google (ex para GTA 6: 'GTA 6 Vice City Lucia Jason screenshot' ou 'GTA 6 official trailer 4k')",
+      "imagePrompt": "Prompt em inglês descritivo para visual",
+      "visualSearchQuery": "Keywords em inglês EXTREMAMENTE ESPECÍFICAS com termos de captura limpa e elementos únicos da cena (ex para GTA 6: 'GTA 6 Lucia Vice City car chase trailer still' ou 'GTA 6 Jason Vice City beach gameplay screenshot')",
       "durationEstSeconds": 6
     }
   ],
@@ -58,15 +58,16 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
   "hashtags": ["#shorts", "#nicho", "#viral"]
 }
 
-REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS:
-1. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
-2. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
-3. CRÍTICO PARA AS IMAGENS E MÍDIA:
-   - 'mainVisualTheme': DEVE ser o nome canônico em INGLÊS da Franquia e Personagem Principal (ex: 'Avengers Doomsday Doctor Doom Robert Downey Jr' ou 'GTA 6 Vice City Lucia Jason').
-   - 'visualSearchQuery': DEVE SER 100% EM INGLÊS com os nomes canônicos e oficiais (ex: 'Iron Man Robert Downey Jr Avengers Doomsday', 'Doctor Doom Marvel mask', 'Avengers Doomsday Marvel Studios poster 4k', 'GTA 6 Lucia Jason Vice City screenshot').
-   - NUNCA use palavras em português nas buscas de imagem (NUNCA use 'ferro', 'destino', 'vingadores', 'doutor', 'salvador', 'lugar', 'chance').
-   - Toda busca de imagem deve ser de altíssima relevância cinematográfica ('4k wallpaper', 'official movie still', 'game screenshot').
-4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
+REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS (CRÍTICO):
+1. PROIBIÇÃO TOTAL DE TERMOS DE MARKETING / CAPAS / ARTES:
+   - NUNCA use palavras como "poster", "cover", "box art", "boxart", "logo", "wallpaper", "art", "promo", "collage", "fanart" em 'mainVisualTheme' ou 'visualSearchQuery'.
+2. USO OBRIGATÓRIO DE TERMOS DE CAPTURA LIMPA DE CENA:
+   - Toda busca DEVE usar termos como: "trailer still", "gameplay screenshot", "in-game raw capture", "cinematic scene".
+3. ANCORAGEM OBRIGATÓRIA POR ELEMENTOS ÚNICOS:
+   - Toda busca DEVE conter nomes específicos dos personagens ou locais únicos da obra (ex para GTA 6: sempre inclua 'Lucia', 'Jason', 'Vice City', 'Leonida' para JAMAIS puxar capas antigas ou GTA 5 / GTA Online; ex para Marvel: 'Avengers Doomsday Doctor Doom Robert Downey Jr trailer still').
+4. IDIOMA DAS BUSCAS:
+   - 'visualSearchQuery' e 'mainVisualTheme' DEVEM SER 100% EM INGLÊS. NUNCA use palavras em português nas buscas de imagem.
+5. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 
   let result;
@@ -118,7 +119,7 @@ REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS:
     throw new Error('Roteiro do Gemini veio sem "sections".');
   }
   if (!scriptJson.mainVisualTheme) {
-    scriptJson.mainVisualTheme = topic ? `${topic} cinematic stock background` : 'abstract background';
+    scriptJson.mainVisualTheme = topic ? `${topic} gameplay screenshot trailer still` : 'cinematic scene gameplay screenshot';
   }
   if (!Array.isArray(scriptJson.hashtags)) {
     scriptJson.hashtags = ['#shorts'];

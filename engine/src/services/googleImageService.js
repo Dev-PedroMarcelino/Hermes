@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { config } from '../config/env.js';
 
-// Block domains and URLs known for watermark, fanart, toys, real estate, or low-res junk
+// Expanded blacklist: blocks covers, posters, logos, box arts, collages, old franchise iterations, watermark stock, fanart, etc.
 const BLOCKED_URL_PATTERNS = [
   /freepik\./i,
   /vecteezy\./i,
@@ -31,6 +31,19 @@ const BLOCKED_URL_PATTERNS = [
   /fireplace/i,
   /icon[-_]?\d+/i,
   /logo/i,
+  /cover/i,
+  /box[-_]?art/i,
+  /boxart/i,
+  /packshot/i,
+  /poster/i,
+  /collage/i,
+  /grid/i,
+  /gta[-_]?online/i,
+  /gta[-_]?v\b/i,
+  /gta5\b/i,
+  /grand[-_]?theft[-_]?auto[-_]?v\b/i,
+  /dvd/i,
+  /bluray/i,
   /\.svg$/i,
   /\.gif$/i
 ];
@@ -42,14 +55,14 @@ function isGoodImageUrl(url) {
 }
 
 /**
- * Searches and downloads 100% REAL images from the web (Google / Bing / Wikimedia).
- * Optimized for lightning-fast execution (< 4s per scene) with strict quality filtering.
+ * Searches and downloads 100% REAL clean in-game/movie capture stills from the web (Google / Bing / Wikimedia).
+ * Enforces negative exclusion operators to prevent covers, posters, collages, and old iterations.
  *
  * @param {Object} options
- * @param {string} options.query Search query (e.g., "Avengers Doomsday Iron Man Robert Downey Jr")
+ * @param {string} options.query Clean search query (e.g., "GTA 6 Lucia Vice City car chase trailer still")
  * @param {string} options.outputPath Local file path to save the image (.jpg)
  * @param {Set<string>} [options.usedUrls] Set of image URLs already downloaded in this job
- * @returns {Promise<string>} Path to saved real image
+ * @returns {Promise<string>} Path to saved real clean capture
  */
 export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new Set() }) {
   await fs.ensureDir(path.dirname(outputPath));
@@ -57,11 +70,18 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
   const apiKey = config.googleSearchApiKey;
   const cx = config.googleSearchCx;
 
-  // Clean and prepare query
-  const cleanQuery = query.replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
-  const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(`${cleanQuery} 4k wallpaper cinematic -fanart -cosplay -drawing -sketch -toy -meme -hotel -room`)}&form=HDRSC2&first=1&qft=+filterui:imagesize-large`;
+  // Clean and prepare query, removing any remaining forbidden keywords
+  const cleanQuery = query
+    .replace(/\b(poster|cover|boxart|box\s*art|logo|wallpaper|wallpapers|art|promo)\b/gi, '')
+    .replace(/[^\w\s-]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-  // --- Strategy 1: High-Speed Web Image Search ---
+  const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(
+    `${cleanQuery} trailer still gameplay screenshot -cover -poster -logo -boxart -collage -grid -online -"gta 5" -"gta v" -gtav -gta5 -fanart -cosplay -drawing -sketch -toy -meme -hotel -room`
+  )}&form=HDRSC2&first=1&qft=+filterui:imagesize-large+filterui:aspect-wide`;
+
+  // --- Strategy 1: High-Speed Web Image Search with Forced Exclusion Operators ---
   try {
     const res = await axios.get(searchUrl, {
       headers: {
@@ -73,12 +93,12 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
     });
 
     const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
-    for (const imgUrl of matches.slice(0, 10)) {
+    for (const imgUrl of matches.slice(0, 12)) {
       if (imgUrl && !usedUrls.has(imgUrl) && isGoodImageUrl(imgUrl)) {
         usedUrls.add(imgUrl);
         const saved = await downloadImage(imgUrl, outputPath);
         if (saved) {
-          console.log(`[GoogleImage] Foto oficial HD baixada para "${cleanQuery}": ${path.basename(imgUrl)}`);
+          console.log(`[GoogleImage] Captura limpa HD baixada para "${cleanQuery}": ${path.basename(imgUrl)}`);
           return saved;
         }
       }
@@ -94,7 +114,7 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
         params: {
           key: apiKey,
           cx: cx,
-          q: `${cleanQuery} -fanart -cosplay`,
+          q: `${cleanQuery} -cover -poster -logo -boxart -collage -grid -online -"gta 5" -"gta v" -fanart -cosplay`,
           searchType: 'image',
           imgSize: 'LARGE',
           imgType: 'photo',
@@ -129,11 +149,11 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
     }
   } catch (err) {}
 
-  throw new Error(`Nenhuma imagem HD disponível para: "${query}"`);
+  throw new Error(`Nenhuma captura de cena limpa encontrada para: "${query}"`);
 }
 
 /**
- * Fast stream downloader with 6-second timeout.
+ * Fast stream downloader with quality check.
  */
 async function downloadImage(url, outputPath) {
   try {
