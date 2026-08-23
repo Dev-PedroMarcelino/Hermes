@@ -32,7 +32,7 @@ async function searchPexelsCandidates({ query, mainVisualTheme, pexelsApiKey, us
       const response = await axios.get('https://api.pexels.com/videos/search', {
         headers: { Authorization: pexelsApiKey },
         params,
-        timeout: 15000
+        timeout: 10000
       });
 
       const candidates = (response.data?.videos || []).filter(v => !usedVideoIds.has(v.id));
@@ -65,7 +65,7 @@ async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
     method: 'get',
     url: videoFile.link,
     responseType: 'stream',
-    timeout: 20000
+    timeout: 15000
   });
 
   return new Promise((resolve, reject) => {
@@ -80,7 +80,7 @@ async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
         fs.remove(filePath).catch(() => {});
         reject(new Error(`Timeout excedido ao baixar clipe de "${matchedQuery}".`));
       }
-    }, 25000);
+    }, 18000);
 
     download.data.pipe(fileStream);
 
@@ -114,8 +114,7 @@ async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
 
 /**
  * Real Web Image Media Collector:
- * Searches, downloads and scales 100% REAL images from Google/Bing/web for each scene.
- * Strictly NO AI generation.
+ * Fast, robust collection of 100% REAL photos from the web.
  *
  * @param {Object} options
  * @param {Array<Object>} [options.sections] Script sections with text, visualSearchQuery
@@ -144,6 +143,7 @@ export async function fetchStockVideos({
   const downloadedFiles = [];
   const usedVideoIds = new Set();
   const usedImageUrls = new Set();
+  let lastSuccessfulClip = null;
 
   for (const [index, item] of items.entries()) {
     const visualQuery = item.visualSearchQuery || mainVisualTheme || 'cinematic wallpaper 4k';
@@ -151,26 +151,23 @@ export async function fetchStockVideos({
 
     let sceneClipPath = null;
 
-    // --- Strategy 1: Real Google/Bing/Web Image Search ---
+    // --- Strategy 1: Real Web Image Search (Google / Bing / Wikimedia) ---
     if (mediaTypePreference !== 'stock_video') {
-      const searchQueries = [
+      const searchAttempts = [
         visualQuery,
-        `${visualQuery} 1080p`,
-        mainVisualTheme ? `${mainVisualTheme} screenshot` : null,
-        mainVisualTheme
+        mainVisualTheme ? `${mainVisualTheme} 1080p` : null
       ].filter(Boolean);
 
-      for (const queryAttempt of searchQueries) {
+      for (const queryToTry of searchAttempts) {
         try {
-          console.log(`[MediaCollector] Buscando foto REAL na web para cena ${index + 1}: "${queryAttempt}"`);
+          console.log(`[MediaCollector] Buscando foto REAL na web para cena ${index + 1}: "${queryToTry}"`);
           const imgPath = path.join(outputDirPath, `scene_${index}_real.jpg`);
           const videoClipPath = path.join(outputDirPath, `scene_${index}_motion.mp4`);
 
           await fetchRealGoogleImage({
-            query: queryAttempt,
+            query: queryToTry,
             outputPath: imgPath,
-            usedUrls: usedImageUrls,
-            sceneIndex: index
+            usedUrls: usedImageUrls
           });
 
           await convertImageToMotionClip({
@@ -181,10 +178,11 @@ export async function fetchStockVideos({
           });
 
           sceneClipPath = videoClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} pronta com foto REAL do Google/web: ${path.basename(videoClipPath)}`);
+          lastSuccessfulClip = videoClipPath;
+          console.log(`[MediaCollector] Cena ${index + 1} pronta com foto REAL: ${path.basename(videoClipPath)}`);
           break;
         } catch (googleErr) {
-          console.warn(`[MediaCollector] Busca para "${queryAttempt}" falhou: ${googleErr.message}`);
+          console.warn(`[MediaCollector] Tentativa para "${queryToTry}" falhou: ${googleErr.message}`);
         }
       }
     }
@@ -204,11 +202,18 @@ export async function fetchStockVideos({
           const pexelsClipPath = path.join(outputDirPath, `pexels_${index}_${video.id}.mp4`);
           await downloadPexelsVideo({ video, filePath: pexelsClipPath, matchedQuery });
           sceneClipPath = pexelsClipPath;
+          lastSuccessfulClip = pexelsClipPath;
           console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${visualQuery}" → ${path.basename(pexelsClipPath)}`);
         }
       } catch (pexelsErr) {
         console.error(`[MediaCollector] Falha no Pexels para cena ${index + 1}:`, pexelsErr.message);
       }
+    }
+
+    // --- Strategy 3: Previous Scene Clip Fallback (Guarantees zero stall) ---
+    if (!sceneClipPath && lastSuccessfulClip) {
+      sceneClipPath = lastSuccessfulClip;
+      console.log(`[MediaCollector] Cena ${index + 1} utilizando clipe da cena anterior.`);
     }
 
     if (sceneClipPath) {
