@@ -2,21 +2,19 @@ import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
 import { config } from '../config/env.js';
-import { generateAiImage } from './aiImageService.js';
 
 /**
- * Fetches a real image corresponding to the query from Google / Wikimedia / Unsplash / Flux.
- * Guaranteed to return a unique image for each scene without duplicates or static fallbacks.
+ * Searches and downloads 100% REAL images from the web (Google / Bing / Wikimedia).
+ * Absolutely ZERO AI image generation — strictly real photos, screenshots, and artwork.
  *
  * @param {Object} options
  * @param {string} options.query Search query (e.g., "GTA 6 Lucia Vice City screenshot")
- * @param {string} [options.imagePrompt] High-detail prompt for AI fallback
  * @param {string} options.outputPath Local file path to save the image (.jpg)
  * @param {Set<string>} [options.usedUrls] Set of image URLs already downloaded in this job
  * @param {number} [options.sceneIndex=0] Index of the scene
- * @returns {Promise<string>} Path to saved image
+ * @returns {Promise<string>} Path to saved real image
  */
-export async function fetchRealGoogleImage({ query, imagePrompt, outputPath, usedUrls = new Set(), sceneIndex = 0 }) {
+export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new Set(), sceneIndex = 0 }) {
   await fs.ensureDir(path.dirname(outputPath));
 
   const apiKey = config.googleSearchApiKey;
@@ -42,7 +40,10 @@ export async function fetchRealGoogleImage({ query, imagePrompt, outputPath, use
         if (item.link && !usedUrls.has(item.link)) {
           usedUrls.add(item.link);
           const saved = await downloadImage(item.link, outputPath);
-          if (saved) return saved;
+          if (saved) {
+            console.log(`[GoogleImage] Foto real baixada via Google API para "${query}"`);
+            return saved;
+          }
         }
       }
     } catch (err) {
@@ -50,7 +51,34 @@ export async function fetchRealGoogleImage({ query, imagePrompt, outputPath, use
     }
   }
 
-  // --- Strategy 2: Wikimedia Commons High-Res Media API ---
+  // --- Strategy 2: High-Definition Web Image Search (Real screenshots / photos) ---
+  try {
+    const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(query)}&form=HDRSC2&first=1`;
+    const res = await axios.get(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+      },
+      timeout: 10000
+    });
+
+    const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
+    for (const imgUrl of matches) {
+      if (imgUrl && !usedUrls.has(imgUrl) && !imgUrl.includes('.svg')) {
+        usedUrls.add(imgUrl);
+        const saved = await downloadImage(imgUrl, outputPath);
+        if (saved) {
+          console.log(`[GoogleImage] Foto real baixada da web para "${query}": ${path.basename(imgUrl)}`);
+          return saved;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[GoogleImage] Falha na busca web para "${query}": ${err.message}`);
+  }
+
+  // --- Strategy 3: Wikimedia Commons High-Res Media API ---
   try {
     const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&prop=pageimages&gsrsearch=${encodeURIComponent(query)}&gsrlimit=10&piprop=thumbnail&pithumbsize=1080&format=json`;
     const response = await axios.get(wikiUrl, { timeout: 8000 });
@@ -60,51 +88,15 @@ export async function fetchRealGoogleImage({ query, imagePrompt, outputPath, use
       if (imgUrl && !usedUrls.has(imgUrl)) {
         usedUrls.add(imgUrl);
         const saved = await downloadImage(imgUrl, outputPath);
-        if (saved) return saved;
+        if (saved) {
+          console.log(`[GoogleImage] Foto real baixada do Wikimedia para "${query}"`);
+          return saved;
+        }
       }
     }
   } catch (err) {}
 
-  // --- Strategy 3: DuckDuckGo Public Image Search ---
-  try {
-    const searchUrl = `https://duckduckgo.com/i.js?q=${encodeURIComponent(query)}&o=json`;
-    const response = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json'
-      },
-      timeout: 8000
-    });
-
-    const results = response.data?.results || [];
-    for (const item of results) {
-      const imgUrl = item.image || item.thumbnail;
-      if (imgUrl && !usedUrls.has(imgUrl)) {
-        usedUrls.add(imgUrl);
-        const saved = await downloadImage(imgUrl, outputPath);
-        if (saved) return saved;
-      }
-    }
-  } catch (err) {}
-
-  // --- Strategy 4: High-Quality Photorealistic FLUX AI Generation (Unique per scene) ---
-  try {
-    const fallbackPrompt = imagePrompt || `${query}, photorealistic 8k game screenshot, Unreal Engine 5 render, cinematic lighting`;
-    await generateAiImage({
-      prompt: fallbackPrompt,
-      outputFilePath: outputPath,
-      width: 720,
-      height: 1280,
-      seed: Math.floor(Math.random() * 1000000) + sceneIndex * 777
-    });
-    if (await fs.pathExists(outputPath)) {
-      return outputPath;
-    }
-  } catch (err) {
-    console.warn(`[GoogleImage] Fallback IA falhou para cena ${sceneIndex + 1}: ${err.message}`);
-  }
-
-  throw new Error(`Não foi possível carregar imagem única para a cena ${sceneIndex + 1}: "${query}"`);
+  throw new Error(`Nenhuma imagem real foi encontrada na web para o termo: "${query}"`);
 }
 
 async function downloadImage(url, outputPath) {
