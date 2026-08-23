@@ -17,7 +17,7 @@ import { pruneExpiredStates } from '../services/oauthService.js';
 const POLL_INTERVAL_MS = 15000;
 const STATE_CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
 /** A job stuck in a working state longer than this is treated as abandoned. */
-const STALE_JOB_MS = 30 * 60 * 1000;
+const STALE_JOB_MS = 3 * 60 * 1000;
 
 const WORKING_STATES = [
   JOB_STATUS.SCRIPTING,
