@@ -5,14 +5,13 @@ import { convertImageToMotionClip } from './aiImageService.js';
 import { fetchRealGoogleImage } from './googleImageService.js';
 
 /**
- * Combines theme and scene query cleanly without duplicate words or marketing noise.
+ * Combines theme and scene query cleanly without duplicate words.
  */
 function buildCleanSceneQuery(mainTheme = '', sceneQuery = '') {
-  const forbidden = /\b(poster|cover|boxart|box\s*art|logo|wallpaper|wallpapers|fanart|art|promo|collage)\b/gi;
-  const cleanMain = mainTheme.replace(forbidden, '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
-  const cleanScene = sceneQuery.replace(forbidden, '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const cleanMain = (mainTheme || '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+  const cleanScene = (sceneQuery || '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
 
-  if (!cleanScene) return cleanMain || 'trailer still gameplay screenshot';
+  if (!cleanScene) return cleanMain || 'GTA 6';
   if (!cleanMain) return cleanScene;
 
   // Split into words and combine without duplication
@@ -139,7 +138,7 @@ async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
 
 /**
  * Real Web Image Media Collector:
- * Fast, robust collection of 100% REAL clean capture stills from the web, strictly anchored to unique elements.
+ * Fast, robust collection of 100% REAL photos directly from Google / Bing image search.
  *
  * @param {Object} options
  * @param {Array<Object>} [options.sections] Script sections with text, visualSearchQuery
@@ -174,21 +173,22 @@ export async function fetchStockVideos({
     const rawVisualQuery = (item.visualSearchQuery || '').trim();
     const mainTheme = (mainVisualTheme || '').trim();
 
-    // Build a clean, deduplicated, topic-anchored query for the scene
+    // Clean, natural query (e.g. "GTA 6 Lucia", "GTA 6 Vice City")
     const cleanQuery = buildCleanSceneQuery(mainTheme, rawVisualQuery);
     const duration = item.durationEstSeconds || 6;
     let sceneClipPath = null;
 
-    // --- Strategy 1: Real Web Image Search (Clean in-game/movie capture stills) ---
+    // --- Strategy 1: Direct Google / Bing Real Image Search ---
     if (mediaTypePreference !== 'stock_video') {
       const searchAttempts = [
         cleanQuery,
-        mainTheme ? `${mainTheme} in-game screenshot` : null
+        rawVisualQuery || null,
+        mainTheme || null
       ].filter(Boolean);
 
       for (const queryToTry of searchAttempts) {
         try {
-          console.log(`[MediaCollector] Buscando captura limpa na web para cena ${index + 1}: "${queryToTry}"`);
+          console.log(`[MediaCollector] Buscando foto real no Google para cena ${index + 1}: "${queryToTry}"`);
           const imgPath = path.join(outputDirPath, `scene_${index}_real.jpg`);
           const videoClipPath = path.join(outputDirPath, `scene_${index}_motion.mp4`);
 
@@ -207,7 +207,7 @@ export async function fetchStockVideos({
 
           sceneClipPath = videoClipPath;
           lastSuccessfulClip = videoClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} pronta com captura limpa REAL: ${path.basename(videoClipPath)}`);
+          console.log(`[MediaCollector] Cena ${index + 1} pronta com foto REAL: ${path.basename(videoClipPath)}`);
           break;
         } catch (googleErr) {
           console.warn(`[MediaCollector] Tentativa para "${queryToTry}" falhou: ${googleErr.message}`);

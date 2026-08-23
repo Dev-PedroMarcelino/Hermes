@@ -44,13 +44,13 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 {
   "title": "Título chamativo do vídeo",
   "hook": "Frase de impacto inicial dos primeiros 3 segundos para prender a atenção",
-  "mainVisualTheme": "Clean English keywords representing the MAIN VISUAL THEME using ONLY clean capture terms and unique identifiers (ex for GTA 6: 'GTA 6 Vice City Lucia Jason gameplay screenshot trailer still')",
+  "mainVisualTheme": "Nome oficial do TEMA PRINCIPAL em inglês para pesquisar no Google Imagens (ex: 'GTA 6' ou 'Avengers Doomsday')",
   "mediaTypePreference": "google_image",
   "sections": [
     {
       "text": "Texto exato que será falado pela voz sintetizada",
       "imagePrompt": "Prompt em inglês descritivo para visual",
-      "visualSearchQuery": "Keywords em inglês EXTREMAMENTE ESPECÍFICAS com termos de captura limpa e elementos únicos da cena (ex para GTA 6: 'GTA 6 Lucia Vice City car chase trailer still' ou 'GTA 6 Jason Vice City beach gameplay screenshot')",
+      "visualSearchQuery": "Termo de busca natural e direto em inglês para o Google Imagens trazer a foto exata (ex para GTA 6: 'GTA 6 Lucia Jason', 'GTA 6 Vice City', 'GTA 6 Lucia', 'GTA 6 trailer')",
       "durationEstSeconds": 6
     }
   ],
@@ -58,16 +58,13 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
   "hashtags": ["#shorts", "#nicho", "#viral"]
 }
 
-REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS (CRÍTICO):
-1. PROIBIÇÃO TOTAL DE TERMOS DE MARKETING / CAPAS / ARTES:
-   - NUNCA use palavras como "poster", "cover", "box art", "boxart", "logo", "wallpaper", "art", "promo", "collage", "fanart" em 'mainVisualTheme' ou 'visualSearchQuery'.
-2. USO OBRIGATÓRIO DE TERMOS DE CAPTURA LIMPA DE CENA:
-   - Toda busca DEVE usar termos como: "trailer still", "gameplay screenshot", "in-game raw capture", "cinematic scene".
-3. ANCORAGEM OBRIGATÓRIA POR ELEMENTOS ÚNICOS:
-   - Toda busca DEVE conter nomes específicos dos personagens ou locais únicos da obra (ex para GTA 6: sempre inclua 'Lucia', 'Jason', 'Vice City', 'Leonida' para JAMAIS puxar capas antigas ou GTA 5 / GTA Online; ex para Marvel: 'Avengers Doomsday Doctor Doom Robert Downey Jr trailer still').
-4. IDIOMA DAS BUSCAS:
-   - 'visualSearchQuery' e 'mainVisualTheme' DEVEM SER 100% EM INGLÊS. NUNCA use palavras em português nas buscas de imagem.
-5. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
+REGRAS DE CONTEÚDO E VISUAIS:
+1. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
+2. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
+3. BUSCA DE IMAGENS NO GOOGLE:
+   - 'mainVisualTheme' e 'visualSearchQuery' DEVEM ser termos de busca simples, naturais e diretos em inglês como uma pessoa pesquisa no Google Imagens (ex: 'GTA 6', 'GTA 6 Lucia Jason', 'GTA 6 Vice City', 'GTA 6 car chase').
+   - NUNCA use palavras em português nas buscas (NUNCA pesquise 'ferro', 'destino', 'vingadores', 'homem de ferro', 'salvador').
+4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 
   let result;
@@ -110,8 +107,6 @@ REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS (CRÍTICO):
     throw new Error(`Resposta do Gemini não é JSON válido: ${error.message}. Resposta: ${responseText.slice(0, 500)}`);
   }
 
-  // Downstream stages (TTS, subtitles, render) all assume these exist — fail
-  // here with a clear message rather than midway through rendering.
   if (!scriptJson.title || !scriptJson.hook) {
     throw new Error('Roteiro do Gemini veio sem "title" ou "hook".');
   }
@@ -119,7 +114,7 @@ REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS (CRÍTICO):
     throw new Error('Roteiro do Gemini veio sem "sections".');
   }
   if (!scriptJson.mainVisualTheme) {
-    scriptJson.mainVisualTheme = topic ? `${topic} gameplay screenshot trailer still` : 'cinematic scene gameplay screenshot';
+    scriptJson.mainVisualTheme = topic || 'GTA 6';
   }
   if (!Array.isArray(scriptJson.hashtags)) {
     scriptJson.hashtags = ['#shorts'];
