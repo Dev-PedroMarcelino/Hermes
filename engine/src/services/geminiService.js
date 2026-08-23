@@ -62,9 +62,10 @@ REGRAS RÍGIDAS DE CONTEÚDO E VISUAIS:
 1. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
 2. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
 3. CRÍTICO PARA AS IMAGENS E MÍDIA:
-   - Toda 'visualSearchQuery' DEVE OBRIGATORIAMENTE começar com o nome exato do PERSONAGEM / FILME / JOGO PRINCIPAL + detalhe da cena em inglês (ex para Vingadores: 'Avengers Endgame Iron Man Thanos battle scene 4k', 'Avengers Endgame Captain America Mjolnir'; ex para GTA 6: 'GTA 6 Lucia Jason official screenshot', 'GTA 6 Vice City Miami beach supercar').
-   - NUNCA use termos abstratos, metafóricos ou frases genéricas em 'visualSearchQuery' (como 'a menor chance', 'inimigos', 'lugar bonito').
-   - Foque sempre em buscar pôsteres oficiais, screenshots reais de 1080p/4k ou cenas oficiais do filme/jogo.
+   - 'mainVisualTheme': DEVE ser o nome canônico em INGLÊS da Franquia e Personagem Principal (ex: 'Avengers Doomsday Doctor Doom Robert Downey Jr' ou 'GTA 6 Vice City Lucia Jason').
+   - 'visualSearchQuery': DEVE SER 100% EM INGLÊS com os nomes canônicos e oficiais (ex: 'Iron Man Robert Downey Jr Avengers Doomsday', 'Doctor Doom Marvel mask', 'Avengers Doomsday Marvel Studios poster 4k', 'GTA 6 Lucia Jason Vice City screenshot').
+   - NUNCA use palavras em português nas buscas de imagem (NUNCA use 'ferro', 'destino', 'vingadores', 'doutor', 'salvador', 'lugar', 'chance').
+   - Toda busca de imagem deve ser de altíssima relevância cinematográfica ('4k wallpaper', 'official movie still', 'game screenshot').
 4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 

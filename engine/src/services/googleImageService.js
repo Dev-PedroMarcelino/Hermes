@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { config } from '../config/env.js';
 
-// Block domains and URLs known for watermark, fanart, toys, or low-res junk
+// Block domains and URLs known for watermark, fanart, toys, real estate, or low-res junk
 const BLOCKED_URL_PATTERNS = [
   /freepik\./i,
   /vecteezy\./i,
@@ -23,6 +23,12 @@ const BLOCKED_URL_PATTERNS = [
   /drawing/i,
   /caricature/i,
   /watermark/i,
+  /hotel/i,
+  /resort/i,
+  /airbnb/i,
+  /realestate/i,
+  /furniture/i,
+  /fireplace/i,
   /icon[-_]?\d+/i,
   /logo/i,
   /\.svg$/i,
@@ -40,7 +46,7 @@ function isGoodImageUrl(url) {
  * Optimized for lightning-fast execution (< 4s per scene) with strict quality filtering.
  *
  * @param {Object} options
- * @param {string} options.query Search query (e.g., "GTA 6 Lucia Vice City screenshot")
+ * @param {string} options.query Search query (e.g., "Avengers Doomsday Iron Man Robert Downey Jr")
  * @param {string} options.outputPath Local file path to save the image (.jpg)
  * @param {Set<string>} [options.usedUrls] Set of image URLs already downloaded in this job
  * @returns {Promise<string>} Path to saved real image
@@ -53,7 +59,7 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
 
   // Clean and prepare query
   const cleanQuery = query.replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
-  const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(`${cleanQuery} 4k wallpaper -fanart -cosplay -drawing -sketch -toy -meme`)}&form=HDRSC2&first=1&qft=+filterui:imagesize-large`;
+  const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(`${cleanQuery} 4k wallpaper cinematic -fanart -cosplay -drawing -sketch -toy -meme -hotel -room`)}&form=HDRSC2&first=1&qft=+filterui:imagesize-large`;
 
   // --- Strategy 1: High-Speed Web Image Search ---
   try {

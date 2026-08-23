@@ -114,7 +114,7 @@ async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
 
 /**
  * Real Web Image Media Collector:
- * Fast, robust collection of 100% REAL photos from the web.
+ * Fast, robust collection of 100% REAL photos from the web, strictly anchored to the main franchise/topic.
  *
  * @param {Object} options
  * @param {Array<Object>} [options.sections] Script sections with text, visualSearchQuery
@@ -146,16 +146,22 @@ export async function fetchStockVideos({
   let lastSuccessfulClip = null;
 
   for (const [index, item] of items.entries()) {
-    const visualQuery = item.visualSearchQuery || mainVisualTheme || 'cinematic wallpaper 4k';
-    const duration = item.durationEstSeconds || 6;
+    const rawVisualQuery = (item.visualSearchQuery || '').trim();
+    const mainTheme = (mainVisualTheme || '').trim();
 
+    // Ensure the main theme / franchise is always anchored to every search query
+    const anchoredQuery = mainTheme && !rawVisualQuery.toLowerCase().includes(mainTheme.toLowerCase().slice(0, 8))
+      ? `${mainTheme} ${rawVisualQuery}`
+      : (rawVisualQuery || mainTheme || 'cinematic 4k wallpaper');
+
+    const duration = item.durationEstSeconds || 6;
     let sceneClipPath = null;
 
     // --- Strategy 1: Real Web Image Search (Google / Bing / Wikimedia) ---
     if (mediaTypePreference !== 'stock_video') {
       const searchAttempts = [
-        visualQuery,
-        mainVisualTheme ? `${mainVisualTheme} 1080p` : null
+        anchoredQuery,
+        mainTheme ? `${mainTheme} official 4k` : null
       ].filter(Boolean);
 
       for (const queryToTry of searchAttempts) {
@@ -191,7 +197,7 @@ export async function fetchStockVideos({
     if (!sceneClipPath && pexelsApiKey) {
       try {
         const { video, matchedQuery } = await searchPexelsCandidates({
-          query: visualQuery,
+          query: anchoredQuery,
           mainVisualTheme,
           pexelsApiKey,
           usedVideoIds
@@ -203,7 +209,7 @@ export async function fetchStockVideos({
           await downloadPexelsVideo({ video, filePath: pexelsClipPath, matchedQuery });
           sceneClipPath = pexelsClipPath;
           lastSuccessfulClip = pexelsClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${visualQuery}" → ${path.basename(pexelsClipPath)}`);
+          console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${anchoredQuery}" → ${path.basename(pexelsClipPath)}`);
         }
       } catch (pexelsErr) {
         console.error(`[MediaCollector] Falha no Pexels para cena ${index + 1}:`, pexelsErr.message);
