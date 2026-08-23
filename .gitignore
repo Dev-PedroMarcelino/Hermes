@@ -5,10 +5,10 @@ engine/node_modules/
 
 # Variáveis de Ambiente & Chaves de Segurança
 .env
-.env*.local
-dashboard/.env
-dashboard/.env*.local
-engine/.env
+.env*
+*.env
+dashboard/.env*
+engine/.env*
 serviceAccountKey.json
 tokens.json
 

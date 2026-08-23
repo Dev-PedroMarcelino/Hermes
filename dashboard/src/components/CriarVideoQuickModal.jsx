@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { X, Plus, Sparkles, Layers, Cpu, CheckCircle2, Rocket, AlertCircle } from 'lucide-react';
+import { X, Plus, Sparkles, Layers, Cpu, CheckCircle2, Rocket, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import { triggerVideoJob } from '../lib/engineApi';
+import PreviewImagensModal from './PreviewImagensModal';
 
 export default function CriarVideoQuickModal({ onClose, onCreated }) {
   const [canais, setCanais] = useState([]);
@@ -13,6 +14,7 @@ export default function CriarVideoQuickModal({ onClose, onCreated }) {
   const [quantidadePartes, setQuantidadePartes] = useState('3');
   const [criando, setCriando] = useState(false);
   const [sucesso, setSucesso] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [erro, setErro] = useState('');
 
   useEffect(() => {
@@ -223,10 +225,30 @@ export default function CriarVideoQuickModal({ onClose, onCreated }) {
             </div>
           )}
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px' }}>
-            <button type="submit" className="gradient-btn" disabled={criando} style={{ padding: '12px 28px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Rocket size={18} /> {criando ? 'Enfileirando...' : 'OK - Iniciar Criação do Vídeo'}
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginTop: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setShowPreview(true)}
+                disabled={!assunto.trim()}
+                className="btn-secondary"
+                style={{
+                  padding: '12px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  border: '1px solid rgba(0, 255, 135, 0.35)',
+                  color: '#00ff87',
+                  background: 'rgba(0, 255, 135, 0.08)'
+                }}
+              >
+                <ImageIcon size={16} /> Ver Prévia de Imagens
+              </button>
+
+              <button type="submit" className="gradient-btn" disabled={criando} style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Rocket size={18} /> {criando ? 'Enfileirando...' : 'OK - Iniciar Vídeo'}
+              </button>
+            </div>
 
             {sucesso && (
               <span style={{ color: '#00ff87', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -236,6 +258,15 @@ export default function CriarVideoQuickModal({ onClose, onCreated }) {
           </div>
         </form>
       </div>
+
+      {showPreview && (
+        <PreviewImagensModal
+          onClose={() => setShowPreview(false)}
+          initialTenantId={selectedTenant}
+          initialTopic={assunto}
+          initialInstruction={descricao}
+        />
+      )}
     </div>
   );
 }

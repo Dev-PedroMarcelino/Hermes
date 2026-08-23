@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import CriarVideoQuickModal from './CriarVideoQuickModal';
+import PreviewImagensModal from './PreviewImagensModal';
 import { getProgressStage, isFailed } from '../lib/jobStatus';
 import {
   Video, Play, Pause, Youtube, Eye, Trash2, Layers, Cpu, CheckCircle2,
-  Clock, Sparkles, Loader2, Share2, ExternalLink, Plus, Zap, RefreshCw, AlertCircle
+  Clock, Sparkles, Loader2, Share2, ExternalLink, Plus, Zap, RefreshCw, AlertCircle,
+  Image as ImageIcon
 } from 'lucide-react';
 
 /**
@@ -26,6 +28,7 @@ export default function MonitorProducao() {
   const [audioRef, setAudioRef] = useState(null);
   const [deletandoJobId, setDeletandoJobId] = useState(null);
   const [showQuickModal, setShowQuickModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [erroFirestore, setErroFirestore] = useState(null);
 
   // Escuta os Canais
@@ -183,6 +186,24 @@ export default function MonitorProducao() {
               ))}
             </select>
           </div>
+
+          <button
+            onClick={() => setShowPreviewModal(true)}
+            className="btn-secondary"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 18px',
+              fontSize: '13px',
+              fontWeight: 700,
+              border: '1px solid rgba(0, 255, 135, 0.4)',
+              color: '#00ff87',
+              background: 'rgba(0, 255, 135, 0.08)'
+            }}
+          >
+            <ImageIcon size={18} /> Prévia de Imagens
+          </button>
 
           <button
             onClick={() => setShowQuickModal(true)}
@@ -448,6 +469,14 @@ export default function MonitorProducao() {
       {showQuickModal && (
         <CriarVideoQuickModal
           onClose={() => setShowQuickModal(false)}
+        />
+      )}
+
+      {/* Modal de Prévia e Validação de Imagens da IA */}
+      {showPreviewModal && (
+        <PreviewImagensModal
+          onClose={() => setShowPreviewModal(false)}
+          initialTenantId={selectedTenant !== 'ALL' ? selectedTenant : ''}
         />
       )}
     </div>

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { Sparkles, Layers, Film, CheckCircle2, Zap, Cpu, AlertCircle } from 'lucide-react';
+import { Sparkles, Layers, Film, CheckCircle2, Zap, Cpu, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import { triggerVideoJob } from '../lib/engineApi';
+import PreviewImagensModal from './PreviewImagensModal';
 
 export default function CriarPautaManual() {
   const [canais, setCanais] = useState([]);
@@ -11,6 +12,7 @@ export default function CriarPautaManual() {
   const [isMiniseries, setIsMiniseries] = useState(false);
   const [quantidadePartes, setQuantidadePartes] = useState('3');
   const [salvando, setSalvando] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [sucessoMsg, setSucessoMsg] = useState(null);
   const [erroMsg, setErroMsg] = useState(null);
 
@@ -193,9 +195,30 @@ export default function CriarPautaManual() {
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-            <button type="submit" className="gradient-btn" disabled={salvando} style={{ height: '48px', padding: '0 28px' }}>
-              {salvando ? 'Enfileirando...' : isMiniseries ? 'Gerar Minissérie Encadeada' : 'Enfileirar Produção'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setShowPreview(true)}
+                disabled={!tema.trim()}
+                className="btn-secondary"
+                style={{
+                  height: '48px',
+                  padding: '0 20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  border: '1px solid rgba(0, 255, 135, 0.35)',
+                  color: '#00ff87',
+                  background: 'rgba(0, 255, 135, 0.08)'
+                }}
+              >
+                <ImageIcon size={18} /> Testar Prévia das Imagens
+              </button>
+
+              <button type="submit" className="gradient-btn" disabled={salvando} style={{ height: '48px', padding: '0 28px' }}>
+                {salvando ? 'Enfileirando...' : isMiniseries ? 'Gerar Minissérie Encadeada' : 'Enfileirar Produção'}
+              </button>
+            </div>
 
             {sucessoMsg && (
               <span style={{ color: '#00ff87', fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -205,6 +228,14 @@ export default function CriarPautaManual() {
           </div>
         </form>
       </div>
+
+      {showPreview && (
+        <PreviewImagensModal
+          onClose={() => setShowPreview(false)}
+          initialTenantId={selectedTenant}
+          initialTopic={tema}
+        />
+      )}
     </div>
   );
 }

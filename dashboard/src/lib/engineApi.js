@@ -140,3 +140,61 @@ export async function saveTenantCredentials({ tenantId, geminiApiKey, pexelsApiK
     throw toReadableError(error);
   }
 }
+
+/**
+ * Generates script scenes with Gemini and brings visual image choices for each scene.
+ *
+ * @param {Object} options
+ * @param {string} options.tenantId
+ * @param {string} [options.topic]
+ * @param {string} [options.instruction]
+ * @param {string} [options.mediaPreference='auto']
+ */
+export async function generateImagePreview({ tenantId, topic, instruction, mediaPreference = 'auto' }) {
+  try {
+    const { data } = await client.post('/api/preview/images', {
+      tenantId,
+      topic: topic || null,
+      instruction: instruction || null,
+      mediaPreference
+    });
+    return data;
+  } catch (error) {
+    throw toReadableError(error);
+  }
+}
+
+/**
+ * Searches / regenerates candidate images for a single scene on the fly.
+ *
+ * @param {Object} options
+ * @param {string} options.query
+ * @param {string} [options.prompt]
+ * @param {string} [options.source='google_image']
+ * @param {string} [options.tenantId]
+ */
+export async function searchSingleImage({ query, prompt, source, tenantId }) {
+  try {
+    const { data } = await client.post('/api/preview/single-image', {
+      query,
+      prompt,
+      source,
+      tenantId
+    });
+    return data;
+  } catch (error) {
+    throw toReadableError(error);
+  }
+}
+
+/**
+ * Gets a proxied URL for external images that might fail with strict CORS / Referrer policies.
+ * @param {string} url
+ */
+export function getProxyImageUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('https://image.pollinations.ai')) return url;
+  if (url.startsWith('https://images.pexels.com')) return url;
+  return `${BASE_URL}/api/preview/proxy-image?url=${encodeURIComponent(url)}`;
+}
+

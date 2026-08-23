@@ -1,5 +1,6 @@
 import express from 'express';
 import fs from 'fs-extra';
+import axios from 'axios';
 import { config, isOriginAllowed } from './config/env.js';
 import { db, firebaseStatus } from './config/firebase.js';
 import { runPreflight } from './config/preflight.js';
@@ -18,6 +19,7 @@ import {
   getAppCredentialsStatus
 } from './services/oauthService.js';
 import { resolvePublicVideo } from './services/publicVideoService.js';
+import { generateImagePreview, searchSingleSceneImages } from './services/imagePreviewService.js';
 import { startWorkerLoop, isWorkerRunning } from './worker/productionWorker.js';
 
 console.log("--- DIAGNÓSTICO DE AMBIENTE ---");
@@ -168,6 +170,86 @@ app.post('/api/jobs/trigger', requireFirestore, requireAuth, async (req, res) =>
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Image Preview & Visual Choice Tool
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates script scenes with Gemini and brings visual image choices immediately
+ * on screen without waiting to render the whole video.
+ */
+app.post('/api/preview/images', requireFirestore, requireAuth, async (req, res) => {
+  const { tenantId, topic, instruction, mediaPreference } = req.body;
+  if (!tenantId) return res.status(400).json({ error: 'O campo tenantId é obrigatório.' });
+
+  try {
+    const preview = await generateImagePreview({
+      tenantId,
+      topic: topic?.trim() || null,
+      instruction: instruction?.trim() || null,
+      mediaPreference: mediaPreference || 'auto'
+    });
+    res.json(preview);
+  } catch (error) {
+    console.error('[Server] Erro ao gerar prévia de imagens:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Searches / regenerates image candidates for a single scene.
+ */
+app.post('/api/preview/single-image', requireFirestore, requireAuth, async (req, res) => {
+  const { query, prompt, source, tenantId } = req.body;
+  if (!query && !prompt) {
+    return res.status(400).json({ error: 'Informe um termo de busca (query) ou prompt.' });
+  }
+
+  try {
+    const result = await searchSingleSceneImages({
+      query: query?.trim(),
+      prompt: prompt?.trim(),
+      source: source || 'google_image',
+      tenantId: tenantId || null
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('[Server] Erro na busca de imagem avulsa:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Safe image proxy to avoid CORS or strict referrer issues when rendering
+ * external preview images in the dashboard.
+ */
+app.get('/api/preview/proxy-image', async (req, res) => {
+  const { url } = req.query;
+  if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    return res.status(400).json({ error: 'URL de imagem inválida.' });
+  }
+
+  try {
+    const response = await axios({
+      method: 'get',
+      url,
+      responseType: 'stream',
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+      }
+    });
+
+    const contentType = response.headers['content-type'] || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    response.data.pipe(res);
+  } catch (error) {
+    res.status(502).json({ error: 'Falha ao buscar imagem externa: ' + error.message });
   }
 });
 
