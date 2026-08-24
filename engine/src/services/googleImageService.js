@@ -23,6 +23,11 @@ const BAD_DOMAINS = [
   /pinterest\./i,
   /pinimg\./i,
   /deviantart\./i,
+  /redbubble\./i,
+  /etsy\./i,
+  /aliexpress\./i,
+  /taobao\./i,
+  /ebay\./i,
   /clipart/i,
   /sketch/i,
   /caricature/i,
@@ -31,10 +36,110 @@ const BAD_DOMAINS = [
   /\.gif$/i
 ];
 
-function isReputableImage(url) {
+function isReputableImage(url, query = '') {
   if (!url || typeof url !== 'string') return false;
   if (url.length < 15) return false;
+  // Ignore base64 / blob / small placeholders
+  if (url.startsWith('data:') || url.startsWith('blob:')) return false;
+
+  const lowerUrl = url.toLowerCase();
+  const lowerQuery = (query || '').toLowerCase();
+
+  // Strict check for GTA 6: reject URLs containing GTA 5 / GTAV / GTA Online
+  if (lowerQuery.includes('gta 6') || lowerQuery.includes('gta vi') || lowerQuery.includes('gta6')) {
+    if (/(gta-?5|gtav|gta-v|gta-online|gta_v|gta_5|grand-theft-auto-v|grand-theft-auto-5|grand-theft-auto-online)/i.test(lowerUrl)) {
+      return false;
+    }
+  }
+
+  // Dynamic previous version exclusion (e.g. if query is "GTA 6", exclude "gta-5", "gta-v", "gta5"; if "iPhone 16", exclude "iphone-15", "iphone15")
+  const versionMatch = lowerQuery.match(/\b([a-z]+)\s*(\d+)\b/);
+  if (versionMatch) {
+    const prefix = versionMatch[1];
+    const num = parseInt(versionMatch[2], 10);
+    if (num > 1) {
+      const prevNum = num - 1;
+      const prevRegex = new RegExp(`\\b(${prefix}-?${prevNum}|${prefix}${prevNum})\\b`, 'i');
+      if (prevRegex.test(lowerUrl) && !lowerQuery.includes(`${prefix} ${prevNum}`)) {
+        return false;
+      }
+    }
+  }
+
   return !BAD_DOMAINS.some(bad => bad.test(url));
+}
+
+const BING_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Cookie': 'SRCHHPGUSR=ADLT=OFF&NRSLT=50;'
+};
+
+/**
+ * Universal search query generator focused on journalistic relevance, leaks, and high resolution.
+ * Removes wallpaper/screen dimension clutter and adds franchise negative filters.
+ */
+function buildSearchQueryVariants(rawQuery) {
+  const clean = (rawQuery || '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+
+  const lowerClean = clean.toLowerCase();
+  const words = clean.split(/\s+/);
+  const variants = [];
+
+  // Dynamic negative filter for versioned topics & noisy franchises
+  let dynamicNegative = '';
+
+  // 1. Version match (e.g. "GTA 6", "iPhone 16", "PS 5")
+  const versionMatch = clean.match(/\b([a-zA-Z]+)\s*(\d+)\b/);
+  if (versionMatch) {
+    const prefix = versionMatch[1];
+    const num = parseInt(versionMatch[2], 10);
+    if (num > 1) {
+      const prevNum = num - 1;
+      dynamicNegative += ` -${prefix}${prevNum} -"${prefix} ${prevNum}"`;
+      if (prefix.toLowerCase() === 'gta') {
+        dynamicNegative += ' -GTAV -GTA5 -"GTA Online" -"GTA 5"';
+      }
+    }
+  }
+
+  // 2. Franchise specific negative filters for unreleased / previous movie/game noise
+  if (lowerClean.includes('doomsday') || lowerClean.includes('avengers')) {
+    if (lowerClean.includes('doomsday')) {
+      dynamicNegative += ' -"Infinity War" -"Endgame" -"Ultron" -"Age of Ultron"';
+    }
+  }
+  if (lowerClean.includes('gta 6') || lowerClean.includes('gta vi') || lowerClean.includes('gta6')) {
+    if (!dynamicNegative.includes('-GTA5')) {
+      dynamicNegative += ' -GTAV -GTA5 -"GTA Online" -"GTA 5"';
+    }
+  }
+  if (lowerClean.includes('ps5') || lowerClean.includes('playstation 5')) {
+    dynamicNegative += ' -PS4 -"PlayStation 4" -PS3';
+  }
+
+  // 3. Build variants focused on journalistic relevance, official screenshots, leaks, and high resolution
+  if (words.length >= 3) {
+    const mainEntity = words.slice(0, 2).join(' ');
+    const rest = words.slice(2).join(' ');
+    variants.push(`"${mainEntity}" ${rest} official screenshot${dynamicNegative}`);
+    variants.push(`"${mainEntity}" ${rest} leak high resolution${dynamicNegative}`);
+    variants.push(`"${mainEntity}" ${rest} official poster hd photo${dynamicNegative}`);
+    variants.push(`"${mainEntity}" ${rest}${dynamicNegative}`);
+  } else if (words.length === 2) {
+    variants.push(`"${clean}" official screenshot${dynamicNegative}`);
+    variants.push(`"${clean}" leak high resolution${dynamicNegative}`);
+    variants.push(`"${clean}" official poster hd photo${dynamicNegative}`);
+    variants.push(`"${clean}"${dynamicNegative}`);
+  }
+
+  variants.push(`${clean} official screenshot${dynamicNegative}`);
+  variants.push(`${clean} high resolution hd photo${dynamicNegative}`);
+  variants.push(`${clean}${dynamicNegative}`);
+
+  return Array.from(new Set(variants));
 }
 
 /**
@@ -50,84 +155,24 @@ function isReputableImage(url) {
 export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new Set() }) {
   await fs.ensureDir(path.dirname(outputPath));
 
-  const apiKey = config.googleSearchApiKey;
-  const cx = config.googleSearchCx;
+  const candidates = await searchRealGoogleImageCandidates({ query, maxResults: 8, usedUrls });
 
-  const cleanQuery = query.replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
+  for (const imgUrl of candidates) {
+    if (!imgUrl || usedUrls.has(imgUrl)) continue;
 
-  // --- Strategy 1: Direct Web Image Search (Bing Images engine) ---
-  try {
-    const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(cleanQuery)}&form=HDRSC2&first=1`;
-    const res = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-      },
-      timeout: 8000
-    });
-
-    const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
-    for (const imgUrl of matches.slice(0, 15)) {
-      if (imgUrl && !usedUrls.has(imgUrl) && isReputableImage(imgUrl)) {
-        usedUrls.add(imgUrl);
-        const saved = await downloadImage(imgUrl, outputPath);
-        if (saved) {
-          console.log(`[GoogleImage] Foto real oficial baixada para "${cleanQuery}": ${path.basename(imgUrl)}`);
-          return saved;
-        }
-      }
+    usedUrls.add(imgUrl);
+    const saved = await downloadImage(imgUrl, outputPath);
+    if (saved) {
+      console.log(`[GoogleImage] Foto real oficial baixada para "${query}": ${path.basename(imgUrl)}`);
+      return saved;
     }
-  } catch (err) {
-    console.warn(`[GoogleImage] Busca na web falhou para "${cleanQuery}": ${err.message}`);
   }
-
-  // --- Strategy 2: Official Google Custom Search JSON API (if configured) ---
-  if (apiKey && cx) {
-    try {
-      const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-        params: {
-          key: apiKey,
-          cx: cx,
-          q: cleanQuery,
-          searchType: 'image',
-          imgSize: 'LARGE',
-          num: 10
-        },
-        timeout: 6000
-      });
-
-      const items = response.data?.items || [];
-      for (const item of items) {
-        if (item.link && !usedUrls.has(item.link) && isReputableImage(item.link)) {
-          usedUrls.add(item.link);
-          const saved = await downloadImage(item.link, outputPath);
-          if (saved) return saved;
-        }
-      }
-    } catch (err) {}
-  }
-
-  // --- Strategy 3: Wikimedia Commons High-Res API Fallback ---
-  try {
-    const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&prop=pageimages&gsrsearch=${encodeURIComponent(cleanQuery)}&gsrlimit=10&piprop=thumbnail&pithumbsize=1280&format=json`;
-    const response = await axios.get(wikiUrl, { timeout: 5000 });
-    const pages = response.data?.query?.pages || {};
-    for (const pageId in pages) {
-      const imgUrl = pages[pageId]?.thumbnail?.source;
-      if (imgUrl && !usedUrls.has(imgUrl) && isReputableImage(imgUrl)) {
-        usedUrls.add(imgUrl);
-        const saved = await downloadImage(imgUrl, outputPath);
-        if (saved) return saved;
-      }
-    }
-  } catch (err) {}
 
   throw new Error(`Nenhuma imagem real encontrada para: "${query}"`);
 }
 
 /**
- * Searches and returns candidate URLs of REAL images directly from Google / Bing / Wiki.
+ * Searches and returns candidate URLs of REAL images directly from Google / Bing.
  *
  * @param {Object} options
  * @param {string} options.query Clean search query
@@ -136,34 +181,33 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
  * @returns {Promise<Array<string>>} List of valid image URLs
  */
 export async function searchRealGoogleImageCandidates({ query, maxResults = 8, usedUrls = new Set() }) {
-  const cleanQuery = (query || '').replace(/[^\w\s-]/gi, ' ').replace(/\s+/g, ' ').trim();
-  if (!cleanQuery) return [];
+  const queryVariants = buildSearchQueryVariants(query);
+  if (queryVariants.length === 0) return [];
 
   const candidates = [];
   const localUsed = new Set(usedUrls);
 
-  // Strategy 1: Bing Images search
-  try {
-    const searchUrl = `https://www.bing.com/images/search?q=${encodeURIComponent(cleanQuery)}&form=HDRSC2&first=1`;
-    const res = await axios.get(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-      },
-      timeout: 8000
-    });
+  // Strategy 1: Bing Async with Query Variants
+  for (const q of queryVariants) {
+    if (candidates.length >= maxResults) break;
+    try {
+      const searchUrl = `https://www.bing.com/images/async?q=${encodeURIComponent(q)}&first=1&count=35&adlt=off`;
+      const res = await axios.get(searchUrl, {
+        headers: BING_HEADERS,
+        timeout: 8000
+      });
 
-    const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
-    for (const imgUrl of matches) {
-      if (imgUrl && !localUsed.has(imgUrl) && isReputableImage(imgUrl)) {
-        localUsed.add(imgUrl);
-        candidates.push(imgUrl);
-        if (candidates.length >= maxResults) break;
+      const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
+      for (const imgUrl of matches) {
+        if (imgUrl && !localUsed.has(imgUrl) && isReputableImage(imgUrl, query)) {
+          localUsed.add(imgUrl);
+          candidates.push(imgUrl);
+          if (candidates.length >= maxResults) break;
+        }
       }
+    } catch (err) {
+      console.warn(`[GoogleImage] Busca de candidatos web falhou para "${q}": ${err.message}`);
     }
-  } catch (err) {
-    console.warn(`[GoogleImage] Busca de candidatos web falhou para "${cleanQuery}": ${err.message}`);
   }
 
   // Strategy 2: Google Custom Search (if available)
@@ -175,7 +219,7 @@ export async function searchRealGoogleImageCandidates({ query, maxResults = 8, u
         params: {
           key: apiKey,
           cx: cx,
-          q: cleanQuery,
+          q: query,
           searchType: 'image',
           imgSize: 'LARGE',
           num: 10
@@ -185,26 +229,9 @@ export async function searchRealGoogleImageCandidates({ query, maxResults = 8, u
 
       const items = response.data?.items || [];
       for (const item of items) {
-        if (item.link && !localUsed.has(item.link) && isReputableImage(item.link)) {
+        if (item.link && !localUsed.has(item.link) && isReputableImage(item.link, query)) {
           localUsed.add(item.link);
           candidates.push(item.link);
-          if (candidates.length >= maxResults) break;
-        }
-      }
-    } catch (err) {}
-  }
-
-  // Strategy 3: Wikimedia Commons
-  if (candidates.length < maxResults) {
-    try {
-      const wikiUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&prop=pageimages&gsrsearch=${encodeURIComponent(cleanQuery)}&gsrlimit=10&piprop=thumbnail&pithumbsize=1280&format=json`;
-      const response = await axios.get(wikiUrl, { timeout: 5000 });
-      const pages = response.data?.query?.pages || {};
-      for (const pageId in pages) {
-        const imgUrl = pages[pageId]?.thumbnail?.source;
-        if (imgUrl && !localUsed.has(imgUrl) && isReputableImage(imgUrl)) {
-          localUsed.add(imgUrl);
-          candidates.push(imgUrl);
           if (candidates.length >= maxResults) break;
         }
       }
@@ -238,4 +265,5 @@ async function downloadImage(url, outputPath) {
     return null;
   }
 }
+
 

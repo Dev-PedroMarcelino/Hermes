@@ -36,7 +36,7 @@ Crie um roteiro de vídeo curto de ALTA RETENÇÃO (duração total ideal entre 
 - Nicho do Canal: ${niche}
 - Identidade da Marca: ${brandIdentity}
 - Idioma: ${language}
-${topic ? `- Tópico Específico: ${topic}` : '- Tópico: Escolha um tópico surpreendente, curioso e de alto engajamento dentro do nicho.'}
+${topic ? `- Tópico Específico (FOCO EXCLUSIVO): ${topic}` : '- Tópico: Escolha um tópico surpreendente, curioso e de alto engajamento dentro do nicho.'}
 ${instruction ? `- Orientação adicional do operador (siga à risca): ${instruction}` : ''}
 ${recentTitles.length ? `\nTEMAS JÁ PUBLICADOS NESTE CANAL — NÃO REPITA NENHUM DELES NEM VARIAÇÕES PRÓXIMAS:\n${recentTitles.map(t => `- ${t}`).join('\n')}` : ''}
 
@@ -44,27 +44,32 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 {
   "title": "Título chamativo do vídeo",
   "hook": "Frase de impacto inicial dos primeiros 3 segundos para prender a atenção",
-  "mainVisualTheme": "Nome oficial do TEMA PRINCIPAL em inglês para pesquisar no Google Imagens (ex: 'GTA 6' ou 'Avengers Doomsday')",
+  "mainVisualTheme": "Nome oficial do TEMA PRINCIPAL em inglês para pesquisar no Google Imagens (ex: se o tópico for GTA 6 -> 'GTA 6')",
   "mediaTypePreference": "google_image",
   "sections": [
     {
       "text": "Texto exato que será falado pela voz sintetizada",
       "imagePrompt": "Prompt em inglês descritivo para visual",
-      "visualSearchQuery": "Termo de busca natural e direto em inglês para o Google Imagens trazer a foto exata (ex para GTA 6: 'GTA 6 Lucia Jason', 'GTA 6 Vice City', 'GTA 6 Lucia', 'GTA 6 trailer')",
+      "visualSearchQuery": "Termo de busca natural e direto em inglês com o tema central para o Google Imagens (ex para GTA 6: 'GTA 6 Vice City screenshot')",
       "durationEstSeconds": 6
     }
   ],
   "soundMood": "Estilo da música de fundo (ex: 'energetic dark synthwave')",
-  "hashtags": ["#shorts", "#nicho", "#viral"]
+  "hashtags": ["#shorts", "#viral"]
 }
 
 REGRAS DE CONTEÚDO E VISUAIS:
-1. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
-2. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
-3. BUSCA DE IMAGENS NO GOOGLE:
-   - 'mainVisualTheme' e 'visualSearchQuery' DEVEM ser termos de busca simples, naturais e diretos em inglês como uma pessoa pesquisa no Google Imagens (ex: 'GTA 6', 'GTA 6 Lucia Jason', 'GTA 6 Vice City', 'GTA 6 car chase').
-   - NUNCA use palavras em português nas buscas (NUNCA pesquise 'ferro', 'destino', 'vingadores', 'homem de ferro', 'salvador').
-4. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
+1. FOCO EXCLUSIVO NO TÓPICO:
+   - Fale ÚNICA E EXCLUSIVAMENTE sobre o assunto solicitado (${topic || 'o tópico informado'}).
+   - É EXTREMAMENTE PROIBIDO mencionar outros filmes, personagens ou franquias não relacionadas (NUNCA mencione 'Doutor Destino', 'Vingadores', 'Marvel' ou outros temas se o tópico for sobre 'GTA 6').
+2. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
+3. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
+4. BUSCA DE IMAGENS NO GOOGLE (RIGOROSA E PRECISA):
+   - 'mainVisualTheme' deve ser o nome oficial da franquia/pessoa/tópico em inglês.
+   - 'visualSearchQuery' DEVE OBRIGATORIAMENTE conter a entidade central e qualificadores descritivos reais em inglês (ex: 'GTA 6 Vice City screenshot', 'GTA 6 Lucia Jason vehicle').
+   - PROIBIDO usar queries genéricas ou dependentes apenas do substantivo comum (NUNCA pesquise apenas 'map', 'car', 'city', 'gameplay'; SEMPRE inclua o nome oficial completo da entidade principal).
+   - PROIBIDO usar palavras em português nas buscas.
+5. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 
   let result;

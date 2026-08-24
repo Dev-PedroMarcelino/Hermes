@@ -149,7 +149,8 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
       mainVisualTheme,
       mediaTypePreference: scriptJson.mediaTypePreference || 'ai_image',
       outputDirPath: workDir,
-      pexelsApiKey: pexelsKey
+      pexelsApiKey: pexelsKey,
+      geminiApiKey: geminiKey
     });
     console.log(`[Pipeline] ${downloadedClips.length} clipe(s) de fundo preparados para montagem.`);
 

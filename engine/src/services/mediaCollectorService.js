@@ -168,7 +168,8 @@ export async function fetchStockVideos({
   mainVisualTheme = '',
   mediaTypePreference = 'google_image',
   outputDirPath,
-  pexelsApiKey
+  pexelsApiKey,
+  geminiApiKey = null
 }) {
   await fs.ensureDir(outputDirPath);
 
@@ -191,7 +192,7 @@ export async function fetchStockVideos({
     const duration = item.durationEstSeconds || 6;
     let sceneClipPath = null;
 
-    // --- Strategy 1: Direct Google / Bing Real Image Search ---
+    // --- Strategy 1: Direct Google / Bing Real Image Search (Vision Audited) ---
     if (mediaTypePreference !== 'stock_video') {
       const searchAttempts = [
         concreteQuery,
@@ -207,7 +208,10 @@ export async function fetchStockVideos({
           await fetchRealGoogleImage({
             query: queryToTry,
             outputPath: imgPath,
-            usedUrls: usedImageUrls
+            usedUrls: usedImageUrls,
+            geminiApiKey,
+            topic: mainTheme || concreteQuery,
+            sceneDescription: `${mainTheme}: ${item.text || concreteQuery}`
           });
 
           await convertImageToMotionClip({
