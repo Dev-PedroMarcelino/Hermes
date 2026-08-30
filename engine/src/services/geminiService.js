@@ -19,14 +19,15 @@ export async function generateVideoScript({
   recentTitles = []
 }) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   const candidateModels = Array.from(new Set([
     primaryModel,
-    'gemini-2.0-flash',
     'gemini-3.5-flash-lite',
+    'gemini-3.6-flash',
     'gemini-3.5-flash',
-    'gemini-2.5-flash',
-    'gemini-1.5-flash'
+    'gemini-flash-latest',
+    'gemini-3.7-flash',
+    'gemini-2.5-pro'
   ]));
 
   const prompt = `
@@ -81,7 +82,10 @@ REGRAS DE CONTEÚDO E VISUAIS:
         model: modelName,
         generationConfig: { responseMimeType: 'application/json' }
       });
-      result = await model.generateContent(prompt);
+      result = await Promise.race([
+        model.generateContent(prompt),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout de 12s excedido para ${modelName}`)), 12000))
+      ]);
       if (modelName !== primaryModel) {
         console.warn(`[Gemini] Usado modelo de fallback '${modelName}' com sucesso (modelo '${primaryModel}' falhou).`);
       }
@@ -89,12 +93,10 @@ REGRAS DE CONTEÚDO E VISUAIS:
       break;
     } catch (err) {
       lastError = err;
-      const isNotFound = err.message?.includes('404') || err.message?.includes('not found') || err.message?.includes('no longer available');
-      if (isNotFound) {
-        console.warn(`[Gemini] Modelo '${modelName}' não encontrado no Gemini API (404). Tentando próximo modelo...`);
-        continue;
-      }
-      throw err;
+      console.warn(`[Gemini] Tentativa com modelo '${modelName}' falhou: ${err.message}. Tentando próximo modelo...`);
+      // Small wait to mitigate momentary spikes
+      await new Promise(resolve => setTimeout(resolve, 350));
+      continue;
     }
   }
 
