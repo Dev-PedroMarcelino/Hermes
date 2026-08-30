@@ -69,6 +69,12 @@ services:
         sync: false
       - key: PEXELS_API_KEY
         sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: GOOGLE_SEARCH_API_KEY
+        sync: false
+      - key: GOOGLE_SEARCH_CX
+        sync: false
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_CLIENT_EMAIL

@@ -96,6 +96,7 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
 
     const geminiKey = decryptCredential(vaultData.geminiApiKey) || config.geminiApiKey;
     const pexelsKey = decryptCredential(vaultData.pexelsApiKey) || config.pexelsApiKey;
+    const serperKey = decryptCredential(vaultData.serperApiKey) || config.serperApiKey;
 
     if (!geminiKey) throw new Error(`Nenhuma GEMINI_API_KEY disponível para o canal ${tenantId}.`);
 
@@ -147,10 +148,11 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
     const downloadedClips = await fetchStockVideos({
       sections: scriptJson.sections || [],
       mainVisualTheme,
-      mediaTypePreference: scriptJson.mediaTypePreference || 'ai_image',
+      mediaTypePreference: scriptJson.mediaTypePreference || 'google_image',
       outputDirPath: workDir,
       pexelsApiKey: pexelsKey,
-      geminiApiKey: geminiKey
+      geminiApiKey: geminiKey,
+      serperApiKey: serperKey
     });
     console.log(`[Pipeline] ${downloadedClips.length} clipe(s) de fundo preparados para montagem.`);
 

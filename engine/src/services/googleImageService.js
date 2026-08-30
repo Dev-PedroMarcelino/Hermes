@@ -70,10 +70,20 @@ function isReputableImage(url, query = '') {
 }
 
 const BING_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Cookie': 'SRCHHPGUSR=ADLT=OFF&NRSLT=50;'
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'DNT': '1',
+  'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  'Sec-Ch-Ua-Mobile': '?0',
+  'Sec-Ch-Ua-Platform': '"Windows"',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1',
+  'Cookie': 'SRCHHPGUSR=ADLT=OFF&NRSLT=50; _EDGE_S=F=1; MUID=301828391823;'
 };
 
 /**
@@ -150,12 +160,26 @@ function buildSearchQueryVariants(rawQuery) {
  * @param {string} options.query Clean search query (e.g. "GTA 6 Lucia", "GTA 6 Vice City")
  * @param {string} options.outputPath Local file path to save the image (.jpg)
  * @param {Set<string>} [options.usedUrls] Set of image URLs already downloaded in this job
+ * @param {string} [options.serperApiKey]
+ * @param {string} [options.pexelsApiKey]
  * @returns {Promise<string>} Path to saved real image
  */
-export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new Set() }) {
+export async function fetchRealGoogleImage({
+  query,
+  outputPath,
+  usedUrls = new Set(),
+  serperApiKey = null,
+  pexelsApiKey = null
+}) {
   await fs.ensureDir(path.dirname(outputPath));
 
-  const candidates = await searchRealGoogleImageCandidates({ query, maxResults: 8, usedUrls });
+  const candidates = await searchRealGoogleImageCandidates({
+    query,
+    maxResults: 8,
+    usedUrls,
+    serperApiKey,
+    pexelsApiKey
+  });
 
   for (const imgUrl of candidates) {
     if (!imgUrl || usedUrls.has(imgUrl)) continue;
@@ -172,45 +196,63 @@ export async function fetchRealGoogleImage({ query, outputPath, usedUrls = new S
 }
 
 /**
- * Searches and returns candidate URLs of REAL images directly from Google / Bing.
+ * Searches and returns candidate URLs of REAL images from Serper Google Images,
+ * Google Custom Search, Enhanced Bing Scraper, or Pexels Photos.
  *
  * @param {Object} options
  * @param {string} options.query Clean search query
  * @param {number} [options.maxResults=8] Maximum number of URLs to return
  * @param {Set<string>} [options.usedUrls] Set of already used image URLs
+ * @param {string} [options.serperApiKey]
+ * @param {string} [options.pexelsApiKey]
  * @returns {Promise<Array<string>>} List of valid image URLs
  */
-export async function searchRealGoogleImageCandidates({ query, maxResults = 8, usedUrls = new Set() }) {
-  const queryVariants = buildSearchQueryVariants(query);
-  if (queryVariants.length === 0) return [];
+export async function searchRealGoogleImageCandidates({
+  query,
+  maxResults = 8,
+  usedUrls = new Set(),
+  serperApiKey = null,
+  pexelsApiKey = null
+}) {
+  const cleanQuery = (query || '').trim();
+  if (!cleanQuery) return [];
 
   const candidates = [];
   const localUsed = new Set(usedUrls);
 
-  // Strategy 1: Bing Async with Query Variants
-  for (const q of queryVariants) {
-    if (candidates.length >= maxResults) break;
+  // Strategy 1: Serper.dev Google Images API (100% cloud & datacenter friendly)
+  const activeSerperKey = serperApiKey || config.serperApiKey;
+  if (activeSerperKey) {
     try {
-      const searchUrl = `https://www.bing.com/images/async?q=${encodeURIComponent(q)}&first=1&count=35&adlt=off`;
-      const res = await axios.get(searchUrl, {
-        headers: BING_HEADERS,
-        timeout: 8000
-      });
-
-      const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
-      for (const imgUrl of matches) {
-        if (imgUrl && !localUsed.has(imgUrl) && isReputableImage(imgUrl, query)) {
-          localUsed.add(imgUrl);
-          candidates.push(imgUrl);
+      const res = await axios.post(
+        'https://google.serper.dev/images',
+        { q: cleanQuery, num: Math.min(maxResults * 2, 20) },
+        {
+          headers: {
+            'X-API-KEY': activeSerperKey,
+            'Content-Type': 'application/json'
+          },
+          timeout: 8000
+        }
+      );
+      const serperImages = res.data?.images || [];
+      for (const item of serperImages) {
+        const link = item.imageUrl;
+        if (link && !localUsed.has(link) && isReputableImage(link, cleanQuery)) {
+          localUsed.add(link);
+          candidates.push(link);
           if (candidates.length >= maxResults) break;
         }
       }
+      if (candidates.length > 0) {
+        console.log(`[GoogleImage] Serper API retornou ${candidates.length} imagens para "${cleanQuery}"`);
+      }
     } catch (err) {
-      console.warn(`[GoogleImage] Busca de candidatos web falhou para "${q}": ${err.message}`);
+      console.warn(`[GoogleImage] Serper API falhou: ${err.message}`);
     }
   }
 
-  // Strategy 2: Google Custom Search (if available)
+  // Strategy 2: Google Custom Search JSON API (Official Google Cloud)
   const apiKey = config.googleSearchApiKey;
   const cx = config.googleSearchCx;
   if (candidates.length < maxResults && apiKey && cx) {
@@ -219,7 +261,7 @@ export async function searchRealGoogleImageCandidates({ query, maxResults = 8, u
         params: {
           key: apiKey,
           cx: cx,
-          q: query,
+          q: cleanQuery,
           searchType: 'image',
           imgSize: 'LARGE',
           num: 10
@@ -229,13 +271,67 @@ export async function searchRealGoogleImageCandidates({ query, maxResults = 8, u
 
       const items = response.data?.items || [];
       for (const item of items) {
-        if (item.link && !localUsed.has(item.link) && isReputableImage(item.link, query)) {
+        if (item.link && !localUsed.has(item.link) && isReputableImage(item.link, cleanQuery)) {
           localUsed.add(item.link);
           candidates.push(item.link);
           if (candidates.length >= maxResults) break;
         }
       }
-    } catch (err) {}
+      if (candidates.length > 0) {
+        console.log(`[GoogleImage] Google Custom Search retornou imagens para "${cleanQuery}"`);
+      }
+    } catch (err) {
+      console.warn(`[GoogleImage] Google Custom Search falhou: ${err.message}`);
+    }
+  }
+
+  // Strategy 3: Bing Image Scraping with Query Variants & Enhanced Headers
+  if (candidates.length < maxResults) {
+    const queryVariants = buildSearchQueryVariants(cleanQuery);
+    for (const q of queryVariants) {
+      if (candidates.length >= maxResults) break;
+      try {
+        const searchUrl = `https://www.bing.com/images/async?q=${encodeURIComponent(q)}&first=1&count=35&adlt=off`;
+        const res = await axios.get(searchUrl, {
+          headers: BING_HEADERS,
+          timeout: 8000
+        });
+
+        const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
+        for (const imgUrl of matches) {
+          if (imgUrl && !localUsed.has(imgUrl) && isReputableImage(imgUrl, cleanQuery)) {
+            localUsed.add(imgUrl);
+            candidates.push(imgUrl);
+            if (candidates.length >= maxResults) break;
+          }
+        }
+      } catch (err) {
+        console.warn(`[GoogleImage] Busca de candidatos Bing falhou para "${q}": ${err.message}`);
+      }
+    }
+  }
+
+  // Strategy 4: High-Res Pexels Stock Photos Fallback (if real web scraping returned 0)
+  const activePexelsKey = pexelsApiKey || config.pexelsApiKey;
+  if (candidates.length === 0 && activePexelsKey) {
+    try {
+      const pexelsRes = await axios.get('https://api.pexels.com/v1/search', {
+        headers: { Authorization: activePexelsKey },
+        params: { query: cleanQuery, per_page: maxResults, orientation: 'portrait' },
+        timeout: 7000
+      });
+      const photos = pexelsRes.data?.photos || [];
+      for (const p of photos) {
+        const pUrl = p.src?.large2x || p.src?.large || p.src?.portrait || p.src?.original;
+        if (pUrl && !localUsed.has(pUrl)) {
+          localUsed.add(pUrl);
+          candidates.push(pUrl);
+        }
+      }
+      if (candidates.length > 0) {
+        console.log(`[GoogleImage] Pexels Photos retornou ${candidates.length} fotos para "${cleanQuery}"`);
+      }
+    } catch (e) {}
   }
 
   return candidates;

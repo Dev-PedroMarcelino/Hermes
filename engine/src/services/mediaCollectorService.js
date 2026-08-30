@@ -169,7 +169,8 @@ export async function fetchStockVideos({
   mediaTypePreference = 'google_image',
   outputDirPath,
   pexelsApiKey,
-  geminiApiKey = null
+  geminiApiKey = null,
+  serperApiKey = null
 }) {
   await fs.ensureDir(outputDirPath);
 
@@ -209,9 +210,8 @@ export async function fetchStockVideos({
             query: queryToTry,
             outputPath: imgPath,
             usedUrls: usedImageUrls,
-            geminiApiKey,
-            topic: mainTheme || concreteQuery,
-            sceneDescription: `${mainTheme}: ${item.text || concreteQuery}`
+            serperApiKey,
+            pexelsApiKey
           });
 
           await convertImageToMotionClip({

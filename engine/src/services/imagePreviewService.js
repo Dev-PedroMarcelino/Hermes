@@ -65,10 +65,10 @@ async function searchPexelsPhotos({ query, pexelsApiKey, count = 6 }) {
  */
 function generatePollinationsUrls(prompt, count = 4) {
   const clean = encodeURIComponent(
-    `${prompt || 'cinematic scene'}, photorealistic, masterpiece, 8k resolution, cinematic lighting, 9:16 vertical`
+    `${prompt || 'cinematic hyperrealistic scene'}, 8k resolution, cinematic lighting, photorealistic photograph, national geographic style, ultra detailed, 9:16 vertical portrait`
   );
   const baseSeed = Math.floor(Math.random() * 1000000);
-  const models = ['flux', 'turbo', 'default', 'flux'];
+  const models = ['flux', 'flux', 'turbo', 'flux'];
 
   return Array.from({ length: count }, (_, i) => {
     const model = models[i % models.length];
@@ -105,6 +105,7 @@ export async function generateImagePreview({
 
   const geminiKey = decryptCredential(vaultData.geminiApiKey) || config.geminiApiKey;
   const pexelsKey = decryptCredential(vaultData.pexelsApiKey) || config.pexelsApiKey;
+  const serperKey = decryptCredential(vaultData.serperApiKey) || config.serperApiKey;
 
   if (!geminiKey) {
     throw new Error('Nenhuma chave GEMINI_API_KEY disponível para gerar o roteiro e as cenas.');
@@ -143,16 +144,34 @@ export async function generateImagePreview({
     } else if (mediaPreference === 'pexels') {
       candidateUrls = await searchPexelsPhotos({ query: concreteQuery, pexelsApiKey: pexelsKey, count: 6 });
       if (candidateUrls.length === 0) {
-        candidateUrls = await searchRealGoogleImageCandidates({ query: concreteQuery, maxResults: 6, usedUrls });
+        candidateUrls = await searchRealGoogleImageCandidates({
+          query: concreteQuery,
+          maxResults: 6,
+          usedUrls,
+          serperApiKey: serperKey,
+          pexelsApiKey: pexelsKey
+        });
         detectedSource = 'google_image';
       } else {
         detectedSource = 'pexels';
       }
     } else if (mediaPreference === 'google_image') {
-      candidateUrls = await searchRealGoogleImageCandidates({ query: concreteQuery, maxResults: 6, usedUrls });
+      candidateUrls = await searchRealGoogleImageCandidates({
+        query: concreteQuery,
+        maxResults: 6,
+        usedUrls,
+        serperApiKey: serperKey,
+        pexelsApiKey: pexelsKey
+      });
       if (candidateUrls.length === 0) {
         // Fallback to main theme search
-        candidateUrls = await searchRealGoogleImageCandidates({ query: mainVisualTheme, maxResults: 6, usedUrls });
+        candidateUrls = await searchRealGoogleImageCandidates({
+          query: mainVisualTheme,
+          maxResults: 6,
+          usedUrls,
+          serperApiKey: serperKey,
+          pexelsApiKey: pexelsKey
+        });
       }
       if (candidateUrls.length === 0) {
         // Fallback to AI generation
@@ -163,7 +182,13 @@ export async function generateImagePreview({
       }
     } else {
       // 'auto' mode: Prioritize Google/Bing real web search, then append AI option
-      candidateUrls = await searchRealGoogleImageCandidates({ query: concreteQuery, maxResults: 5, usedUrls });
+      candidateUrls = await searchRealGoogleImageCandidates({
+        query: concreteQuery,
+        maxResults: 5,
+        usedUrls,
+        serperApiKey: serperKey,
+        pexelsApiKey: pexelsKey
+      });
       if (candidateUrls.length > 0) {
         detectedSource = 'google_image';
         // Add 1 AI alternative for variety
@@ -221,6 +246,7 @@ export async function searchSingleSceneImages({
   tenantId = null
 }) {
   let pexelsKey = config.pexelsApiKey;
+  let serperKey = config.serperApiKey;
 
   if (tenantId) {
     try {
@@ -228,6 +254,7 @@ export async function searchSingleSceneImages({
       if (vaultSnap.exists) {
         const vaultData = vaultSnap.data();
         pexelsKey = decryptCredential(vaultData.pexelsApiKey) || pexelsKey;
+        serperKey = decryptCredential(vaultData.serperApiKey) || serperKey;
       }
     } catch (e) {}
   }
@@ -240,11 +267,21 @@ export async function searchSingleSceneImages({
   } else if (source === 'pexels') {
     candidates = await searchPexelsPhotos({ query: cleanQuery, pexelsApiKey: pexelsKey, count: 6 });
     if (candidates.length === 0) {
-      candidates = await searchRealGoogleImageCandidates({ query: cleanQuery, maxResults: 6 });
+      candidates = await searchRealGoogleImageCandidates({
+        query: cleanQuery,
+        maxResults: 6,
+        serperApiKey: serperKey,
+        pexelsApiKey: pexelsKey
+      });
     }
   } else {
     // google_image default
-    candidates = await searchRealGoogleImageCandidates({ query: cleanQuery, maxResults: 8 });
+    candidates = await searchRealGoogleImageCandidates({
+      query: cleanQuery,
+      maxResults: 8,
+      serperApiKey: serperKey,
+      pexelsApiKey: pexelsKey
+    });
     if (candidates.length === 0) {
       candidates = generatePollinationsUrls(prompt || cleanQuery, 4);
     }
