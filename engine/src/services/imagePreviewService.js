@@ -129,94 +129,87 @@ export async function generateImagePreview({
     ? scriptJson.sections
     : [{ text: scriptJson.hook, visualSearchQuery: mainVisualTheme, imagePrompt: mainVisualTheme, durationEstSeconds: 6 }];
 
-  // 2. Fetch images for each scene in parallel/sequence
-  for (const [index, section] of sections.entries()) {
-    const rawQuery = section.visualSearchQuery || section.imagePrompt || mainVisualTheme;
-    const concreteQuery = buildConcreteSceneQuery(mainVisualTheme, rawQuery, index);
-    const aiPrompt = section.imagePrompt || concreteQuery;
+  // 2. Fetch images for each scene concurrently in parallel
+  const scenes = await Promise.all(
+    sections.map(async (section, index) => {
+      const rawQuery = section.visualSearchQuery || section.imagePrompt || mainVisualTheme;
+      const concreteQuery = buildConcreteSceneQuery(mainVisualTheme, rawQuery, index);
+      const aiPrompt = section.imagePrompt || concreteQuery;
 
-    let candidateUrls = [];
-    let detectedSource = mediaPreference;
+      let candidateUrls = [];
+      let detectedSource = mediaPreference;
 
-    if (mediaPreference === 'ai_image') {
-      candidateUrls = generatePollinationsUrls(aiPrompt, 4);
-      detectedSource = 'ai_image';
-    } else if (mediaPreference === 'pexels') {
-      candidateUrls = await searchPexelsPhotos({ query: concreteQuery, pexelsApiKey: pexelsKey, count: 6 });
-      if (candidateUrls.length === 0) {
+      if (mediaPreference === 'ai_image') {
+        candidateUrls = generatePollinationsUrls(aiPrompt, 4);
+        detectedSource = 'ai_image';
+      } else if (mediaPreference === 'pexels') {
+        candidateUrls = await searchPexelsPhotos({ query: concreteQuery, pexelsApiKey: pexelsKey, count: 6 });
+        if (candidateUrls.length === 0) {
+          candidateUrls = await searchRealGoogleImageCandidates({
+            query: concreteQuery,
+            maxResults: 6,
+            serperApiKey: serperKey,
+            pexelsApiKey: pexelsKey
+          });
+          detectedSource = 'google_image';
+        } else {
+          detectedSource = 'pexels';
+        }
+      } else if (mediaPreference === 'google_image') {
         candidateUrls = await searchRealGoogleImageCandidates({
           query: concreteQuery,
           maxResults: 6,
-          usedUrls,
           serperApiKey: serperKey,
           pexelsApiKey: pexelsKey
         });
-        detectedSource = 'google_image';
+        if (candidateUrls.length === 0) {
+          // Fallback to main theme search
+          candidateUrls = await searchRealGoogleImageCandidates({
+            query: mainVisualTheme,
+            maxResults: 6,
+            serperApiKey: serperKey,
+            pexelsApiKey: pexelsKey
+          });
+        }
+        if (candidateUrls.length === 0) {
+          // Fallback to AI generation
+          candidateUrls = generatePollinationsUrls(aiPrompt, 3);
+          detectedSource = 'ai_image';
+        } else {
+          detectedSource = 'google_image';
+        }
       } else {
-        detectedSource = 'pexels';
-      }
-    } else if (mediaPreference === 'google_image') {
-      candidateUrls = await searchRealGoogleImageCandidates({
-        query: concreteQuery,
-        maxResults: 6,
-        usedUrls,
-        serperApiKey: serperKey,
-        pexelsApiKey: pexelsKey
-      });
-      if (candidateUrls.length === 0) {
-        // Fallback to main theme search
+        // 'auto' mode: Prioritize Google/Bing real web search, then append AI option
         candidateUrls = await searchRealGoogleImageCandidates({
-          query: mainVisualTheme,
-          maxResults: 6,
-          usedUrls,
+          query: concreteQuery,
+          maxResults: 5,
           serperApiKey: serperKey,
           pexelsApiKey: pexelsKey
         });
+        if (candidateUrls.length > 0) {
+          detectedSource = 'google_image';
+          // Add 1 AI alternative for variety
+          const aiAlternative = generatePollinationsUrls(aiPrompt, 1);
+          candidateUrls.push(...aiAlternative);
+        } else {
+          // If web search yielded no images, use AI Flux
+          candidateUrls = generatePollinationsUrls(aiPrompt, 4);
+          detectedSource = 'ai_image';
+        }
       }
-      if (candidateUrls.length === 0) {
-        // Fallback to AI generation
-        candidateUrls = generatePollinationsUrls(aiPrompt, 3);
-        detectedSource = 'ai_image';
-      } else {
-        detectedSource = 'google_image';
-      }
-    } else {
-      // 'auto' mode: Prioritize Google/Bing real web search, then append AI option
-      candidateUrls = await searchRealGoogleImageCandidates({
-        query: concreteQuery,
-        maxResults: 5,
-        usedUrls,
-        serperApiKey: serperKey,
-        pexelsApiKey: pexelsKey
-      });
-      if (candidateUrls.length > 0) {
-        detectedSource = 'google_image';
-        // Add 1 AI alternative for variety
-        const aiAlternative = generatePollinationsUrls(aiPrompt, 1);
-        candidateUrls.push(...aiAlternative);
-      } else {
-        // If web search yielded no images, use AI Flux
-        candidateUrls = generatePollinationsUrls(aiPrompt, 4);
-        detectedSource = 'ai_image';
-      }
-    }
 
-    // Mark primary URL as used
-    if (candidateUrls[0]) {
-      usedUrls.add(candidateUrls[0]);
-    }
-
-    scenes.push({
-      sceneIndex: index,
-      text: section.text || '',
-      durationEstSeconds: section.durationEstSeconds || 6,
-      visualSearchQuery: concreteQuery,
-      imagePrompt: aiPrompt,
-      imageUrl: candidateUrls[0] || generatePollinationsUrls(aiPrompt, 1)[0],
-      alternativeUrls: candidateUrls.slice(1),
-      source: detectedSource
-    });
-  }
+      return {
+        sceneIndex: index,
+        text: section.text || '',
+        durationEstSeconds: section.durationEstSeconds || 6,
+        visualSearchQuery: concreteQuery,
+        imagePrompt: aiPrompt,
+        imageUrl: candidateUrls[0] || generatePollinationsUrls(aiPrompt, 1)[0],
+        alternativeUrls: candidateUrls.slice(1),
+        source: detectedSource
+      };
+    })
+  );
 
   return {
     title: scriptJson.title,

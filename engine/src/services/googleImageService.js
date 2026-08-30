@@ -232,7 +232,7 @@ export async function searchRealGoogleImageCandidates({
             'X-API-KEY': activeSerperKey,
             'Content-Type': 'application/json'
           },
-          timeout: 8000
+          timeout: 4000
         }
       );
       const serperImages = res.data?.images || [];
@@ -266,7 +266,7 @@ export async function searchRealGoogleImageCandidates({
           imgSize: 'LARGE',
           num: 10
         },
-        timeout: 6000
+        timeout: 4000
       });
 
       const items = response.data?.items || [];
@@ -285,16 +285,16 @@ export async function searchRealGoogleImageCandidates({
     }
   }
 
-  // Strategy 3: Bing Image Scraping with Query Variants & Enhanced Headers
+  // Strategy 3: Bing Image Scraping with Top Query Variants & Enhanced Headers
   if (candidates.length < maxResults) {
-    const queryVariants = buildSearchQueryVariants(cleanQuery);
+    const queryVariants = buildSearchQueryVariants(cleanQuery).slice(0, 2);
     for (const q of queryVariants) {
       if (candidates.length >= maxResults) break;
       try {
         const searchUrl = `https://www.bing.com/images/async?q=${encodeURIComponent(q)}&first=1&count=35&adlt=off`;
         const res = await axios.get(searchUrl, {
           headers: BING_HEADERS,
-          timeout: 8000
+          timeout: 4000
         });
 
         const matches = [...res.data.matchAll(/murl&quot;:&quot;(https?:[^&]+)&quot;/g)].map(m => m[1]);
@@ -318,7 +318,7 @@ export async function searchRealGoogleImageCandidates({
       const pexelsRes = await axios.get('https://api.pexels.com/v1/search', {
         headers: { Authorization: activePexelsKey },
         params: { query: cleanQuery, per_page: maxResults, orientation: 'portrait' },
-        timeout: 7000
+        timeout: 4000
       });
       const photos = pexelsRes.data?.photos || [];
       for (const p of photos) {

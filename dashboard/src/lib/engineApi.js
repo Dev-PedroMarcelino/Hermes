@@ -19,7 +19,7 @@ const BASE_URL = (import.meta.env.VITE_ENGINE_URL || 'http://localhost:3001').re
 
 const client = axios.create({
   baseURL: BASE_URL,
-  timeout: 30000,
+  timeout: 60000,
   headers: { 'Content-Type': 'application/json' }
 });
 
@@ -152,12 +152,16 @@ export async function saveTenantCredentials({ tenantId, geminiApiKey, pexelsApiK
  */
 export async function generateImagePreview({ tenantId, topic, instruction, mediaPreference = 'auto' }) {
   try {
-    const { data } = await client.post('/api/preview/images', {
-      tenantId,
-      topic: topic || null,
-      instruction: instruction || null,
-      mediaPreference
-    });
+    const { data } = await client.post(
+      '/api/preview/images',
+      {
+        tenantId,
+        topic: topic || null,
+        instruction: instruction || null,
+        mediaPreference
+      },
+      { timeout: 90000 }
+    );
     return data;
   } catch (error) {
     throw toReadableError(error);
