@@ -122,8 +122,6 @@ export async function generateImagePreview({
   });
 
   const mainVisualTheme = scriptJson.mainVisualTheme || topic || 'General Topic';
-  const scenes = [];
-  const usedUrls = new Set();
 
   const sections = Array.isArray(scriptJson.sections) && scriptJson.sections.length > 0
     ? scriptJson.sections
