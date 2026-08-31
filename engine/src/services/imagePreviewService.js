@@ -4,6 +4,7 @@ import { config } from '../config/env.js';
 import { decryptCredential } from './vaultService.js';
 import { generateVideoScript } from './geminiService.js';
 import { searchRealGoogleImageCandidates } from './googleImageService.js';
+import { searchWebVideoMetadata } from './webVideoService.js';
 
 const FORBIDDEN_WORDS_REGEX = /\b(anteriores|anterior|antigo|como|olha|veja|isso|quando|porque|sobre|mais|menos|detalhe|curiosidade|historia|evolucao|comparison|compare|previous|history|about|how|why|details|framework|flight|shoes|tenis|logo|banner|icon)\b/gi;
 
@@ -115,7 +116,9 @@ export async function generateImagePreview({
     ? scriptJson.sections
     : [{ text: scriptJson.hook, visualSearchQuery: mainVisualTheme, imagePrompt: mainVisualTheme, durationEstSeconds: 3 }];
 
-  // 2. Fetch media candidates for each fast scene concurrently
+  // 2. Fetch media candidates (Videos & Images) for each scene concurrently
+  const preferWebVideos = mediaPreference === 'web_video';
+
   const scenes = await Promise.all(
     sections.map(async (section, index) => {
       const rawQuery = section.visualSearchQuery || section.imagePrompt || mainVisualTheme;
@@ -123,29 +126,39 @@ export async function generateImagePreview({
       const aiPrompt = section.imagePrompt || concreteQuery;
 
       let candidateUrls = [];
-      let detectedSource = mediaPreference === 'ai_image' ? 'ai_image' : 'google_image';
+      let videoInfo = null;
+      let detectedSource = mediaPreference;
 
       if (mediaPreference === 'ai_image') {
         candidateUrls = generatePollinationsUrls(aiPrompt, 4);
+        detectedSource = 'ai_image';
       } else {
-        // Default & Web Real: Google / Bing 4K images
-        candidateUrls = await searchRealGoogleImageCandidates({
-          query: concreteQuery,
-          maxResults: 6,
-          serperApiKey: serperKey
-        });
+        // Concurrently search Web Video metadata and Google 4K images
+        const [videoResults, googleImages] = await Promise.all([
+          preferWebVideos ? searchWebVideoMetadata(concreteQuery, 2).catch(() => []) : Promise.resolve([]),
+          searchRealGoogleImageCandidates({
+            query: concreteQuery,
+            maxResults: 6,
+            serperApiKey: serperKey
+          }).catch(() => [])
+        ]);
 
-        if (candidateUrls.length === 0) {
-          candidateUrls = await searchRealGoogleImageCandidates({
+        let resolvedImages = googleImages;
+        if (resolvedImages.length === 0) {
+          resolvedImages = await searchRealGoogleImageCandidates({
             query: mainVisualTheme,
             maxResults: 6,
             serperApiKey: serperKey
-          });
+          }).catch(() => []);
         }
 
-        if (candidateUrls.length === 0) {
-          candidateUrls = generatePollinationsUrls(aiPrompt, 3);
-          detectedSource = 'ai_image';
+        if (videoResults.length > 0) {
+          videoInfo = videoResults[0];
+          detectedSource = 'web_video';
+          candidateUrls = [videoInfo.thumbnailUrl, ...resolvedImages].filter(Boolean);
+        } else {
+          detectedSource = 'google_image';
+          candidateUrls = resolvedImages.length > 0 ? resolvedImages : generatePollinationsUrls(aiPrompt, 3);
         }
       }
 
@@ -154,12 +167,15 @@ export async function generateImagePreview({
       return {
         sceneIndex: index,
         text: section.text || '',
-        durationEstSeconds: section.durationEstSeconds || 3,
+        durationEstSeconds: section.durationEstSeconds || (videoInfo ? 8 : 3),
         visualSearchQuery: concreteQuery,
         imagePrompt: aiPrompt,
         imageUrl: defaultImage,
-        videoUrl: null,
-        isVideo: false,
+        videoUrl: videoInfo?.videoUrl || null,
+        embedUrl: videoInfo?.embedUrl || null,
+        youtubeId: videoInfo?.id || null,
+        videoTitle: videoInfo?.title || null,
+        isVideo: Boolean(videoInfo),
         alternativeUrls: candidateUrls.slice(1),
         source: detectedSource
       };
@@ -183,7 +199,7 @@ export async function generateImagePreview({
 export async function searchSingleSceneImages({
   query = '',
   prompt = '',
-  source = 'google_image',
+  source = 'web_video',
   tenantId = null
 }) {
   let serperKey = config.serperApiKey;
@@ -200,9 +216,26 @@ export async function searchSingleSceneImages({
 
   const cleanQuery = (query || prompt || '').trim();
   let candidates = [];
+  let videoInfo = null;
 
   if (source === 'ai_image') {
     candidates = generatePollinationsUrls(prompt || cleanQuery, 5);
+  } else if (source === 'web_video') {
+    const [videoResults, googleImages] = await Promise.all([
+      searchWebVideoMetadata(cleanQuery, 2).catch(() => []),
+      searchRealGoogleImageCandidates({
+        query: cleanQuery,
+        maxResults: 6,
+        serperApiKey: serperKey
+      }).catch(() => [])
+    ]);
+
+    if (videoResults.length > 0) {
+      videoInfo = videoResults[0];
+      candidates = [videoInfo.thumbnailUrl, ...googleImages].filter(Boolean);
+    } else {
+      candidates = googleImages.length > 0 ? googleImages : generatePollinationsUrls(prompt || cleanQuery, 4);
+    }
   } else {
     candidates = await searchRealGoogleImageCandidates({
       query: cleanQuery,
@@ -218,10 +251,13 @@ export async function searchSingleSceneImages({
   return {
     query: cleanQuery,
     prompt: prompt || cleanQuery,
-    source: source === 'ai_image' ? 'ai_image' : 'google_image',
+    source: videoInfo ? 'web_video' : source === 'ai_image' ? 'ai_image' : 'google_image',
     imageUrl: candidates[0] || null,
-    videoUrl: null,
-    isVideo: false,
+    videoUrl: videoInfo?.videoUrl || null,
+    embedUrl: videoInfo?.embedUrl || null,
+    youtubeId: videoInfo?.id || null,
+    videoTitle: videoInfo?.title || null,
+    isVideo: Boolean(videoInfo),
     alternativeUrls: candidates.slice(1)
   };
 }

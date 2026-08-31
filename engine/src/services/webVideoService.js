@@ -56,6 +56,55 @@ function cleanVideoSearchQuery(query) {
 }
 
 /**
+ * Searches real web videos metadata (ID, title, thumbnail, embed URL) for UI preview.
+ *
+ * @param {string} query Search terms
+ * @param {number} [maxResults=2]
+ * @returns {Promise<Array<Object>>} Video candidate metadata
+ */
+export async function searchWebVideoMetadata(query, maxResults = 2) {
+  const cleanQ = cleanVideoSearchQuery(query);
+  if (!cleanQ) return [];
+
+  const ytDlpPath = await ensureYtDlpBinary();
+  const args = [
+    `ytsearch${maxResults}:${cleanQ} trailer | clip | scene`,
+    '--print', '%(id)s|||%(title)s|||%(duration)s|||%(thumbnail)s',
+    '--no-warnings',
+    '--flat-playlist'
+  ];
+
+  try {
+    const { stdout } = await execFileAsync(ytDlpPath, args, { timeout: 12000 });
+    const lines = stdout.trim().split('\n').filter(Boolean);
+    return lines.map(line => {
+      const parts = line.split('|||');
+      const id = parts[0]?.trim();
+      const title = parts[1]?.trim() || cleanQ;
+      const duration = parts[2]?.trim() || '10';
+      const thumb = parts[3]?.trim();
+
+      if (!id) return null;
+      const validThumb = (thumb && thumb !== 'NA' && thumb.startsWith('http'))
+        ? thumb
+        : `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+
+      return {
+        id,
+        title,
+        duration,
+        thumbnailUrl: validThumb,
+        embedUrl: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&start=5`,
+        videoUrl: `https://www.youtube.com/watch?v=${id}`
+      };
+    }).filter(Boolean);
+  } catch (err) {
+    console.warn(`[WebVideo] Busca de prévia de vídeo falhou para "${cleanQ}": ${err.message}`);
+    return [];
+  }
+}
+
+/**
  * Searches and downloads a real web video snippet (≤ 10s) for a specific scene,
  * formatting it with FFmpeg into a vertical 1080x1920 (9:16) MP4 without audio.
  *

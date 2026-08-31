@@ -525,8 +525,8 @@ export default function CriarVideoModal({
                         </span>
                       </div>
 
-                      {/* Imagem Vertical 9:16 */}
-                      <div style={{ position: 'relative', width: '100%', height: '280px', borderRadius: '10px', overflow: 'hidden', background: '#000' }}>
+                      {/* Imagem / Video de Capa da Cena */}
+                      <div style={{ position: 'relative', width: '100%', height: '240px', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#000' }}>
                         {currentImgUrl ? (
                           <img
                             src={getProxyImageUrl(currentImgUrl)}
@@ -547,14 +547,20 @@ export default function CriarVideoModal({
                         )}
 
                         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '8px', background: 'linear-gradient(to top, rgba(0,0,0,0.85), transparent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          {scene.videoUrl || (currentImgUrl && (currentImgUrl.includes('.mp4') || currentImgUrl.includes('.webm'))) ? (
+                          {scene.isVideo || scene.embedUrl || scene.youtubeId || scene.videoUrl ? (
                             <button
                               type="button"
-                              onClick={() => setZoomedMedia({ url: scene.videoUrl || currentImgUrl, isVideo: true, title: `Cena ${idx + 1}` })}
+                              onClick={() => setZoomedMedia({
+                                url: scene.videoUrl,
+                                embedUrl: scene.embedUrl,
+                                youtubeId: scene.youtubeId,
+                                isVideo: true,
+                                title: scene.videoTitle || `Cena ${idx + 1}`
+                              })}
                               className="btn-secondary"
-                              style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(16, 185, 129, 0.25)', color: '#10b981', borderColor: '#10b981', fontWeight: 700 }}
+                              style={{ padding: '5px 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16, 185, 129, 0.3)', color: '#10b981', borderColor: '#10b981', fontWeight: 800 }}
                             >
-                              <Play size={12} /> Prévia do Vídeo
+                              <Play size={13} /> Assistir Vídeo Real
                             </button>
                           ) : (
                             <button
@@ -671,7 +677,17 @@ export default function CriarVideoModal({
           }}
         >
           <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', maxWidth: '90vw' }}>
-            {zoomedMedia.isVideo || (zoomedMedia.url && (zoomedMedia.url.endsWith('.mp4') || zoomedMedia.url.endsWith('.webm'))) ? (
+            {zoomedMedia.embedUrl || zoomedMedia.youtubeId ? (
+              <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '2px solid #10b981', boxShadow: '0 0 50px rgba(16, 185, 129, 0.4)', width: 'min(90vw, 640px)', aspectRatio: '16/9', background: '#000' }}>
+                <iframe
+                  src={zoomedMedia.embedUrl || `https://www.youtube-nocookie.com/embed/${zoomedMedia.youtubeId}?autoplay=1&start=5`}
+                  title={zoomedMedia.title || 'Prévia do Vídeo'}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              </div>
+            ) : zoomedMedia.isVideo || (zoomedMedia.url && (zoomedMedia.url.endsWith('.mp4') || zoomedMedia.url.endsWith('.webm'))) ? (
               <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid #10b981', boxShadow: '0 0 40px rgba(16, 185, 129, 0.3)' }}>
                 <video
                   src={zoomedMedia.url}
