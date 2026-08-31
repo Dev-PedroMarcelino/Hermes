@@ -121,8 +121,13 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
       .join(' ');
     const audioPath = path.join(workDir, 'speech.mp3');
 
-    const voiceSetting = tenantData.contentConfig?.voiceId || tenantData.voiceTone || 'pt-BR-AntonioNeural';
-    const providerSetting = tenantData.contentConfig?.ttsProvider || (voiceSetting.startsWith('elevenlabs:') ? 'elevenlabs' : 'edge');
+    const voiceSetting = tenantData.voiceTone || tenantData.contentConfig?.voiceId || 'pt-BR-AntonioNeural';
+    const providerSetting = (voiceSetting.startsWith('elevenlabs:') || tenantData.contentConfig?.ttsProvider === 'elevenlabs') ? 'elevenlabs' : 'edge';
+
+    console.log(`[Pipeline] Voz configurada para o canal '${tenantName}': '${voiceSetting}' (Provedor: ${providerSetting})`);
+    if (providerSetting === 'elevenlabs') {
+      console.log(`[Pipeline] Chave ElevenLabs presente no motor: ${Boolean(elevenlabsKey)}`);
+    }
 
     const { cues } = await generateSpeech({
       text: narrationText,

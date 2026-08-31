@@ -155,17 +155,21 @@ export async function generateSpeech({
 
   // If provider is elevenlabs OR voice starts with elevenlabs: or looks like custom voice ID
   const isElevenLabs = provider === 'elevenlabs' || voice.startsWith('elevenlabs:') || (elevenlabsApiKey && !voice.includes('Neural'));
-  if (isElevenLabs && elevenlabsApiKey) {
-    const cleanVoiceId = voice.replace(/^elevenlabs:/, '').trim();
-    try {
-      return await generateSpeechElevenLabs({
-        text: cleanText,
-        outputFilePath,
-        voiceId: cleanVoiceId,
-        apiKey: elevenlabsApiKey
-      });
-    } catch (err) {
-      console.warn(`[TTS] Síntese ElevenLabs falhou (${err.message}). Caindo de volta para o EdgeTTS como emergência...`);
+  if (isElevenLabs) {
+    if (!elevenlabsApiKey) {
+      console.warn(`[TTS] Provedor ElevenLabs selecionado (Voz: '${voice}'), mas a chave ELEVENLABS_API_KEY não foi encontrada no motor nem no vault. Caindo de volta para o EdgeTTS...`);
+    } else {
+      const cleanVoiceId = voice.replace(/^elevenlabs:/, '').trim();
+      try {
+        return await generateSpeechElevenLabs({
+          text: cleanText,
+          outputFilePath,
+          voiceId: cleanVoiceId,
+          apiKey: elevenlabsApiKey
+        });
+      } catch (err) {
+        console.warn(`[TTS] Síntese ElevenLabs falhou (${err.message}). Caindo de volta para o EdgeTTS como emergência...`);
+      }
     }
   }
 

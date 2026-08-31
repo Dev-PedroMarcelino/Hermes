@@ -144,6 +144,8 @@ export default function ChannelDetailModal({ channel, onClose }) {
         await updateDoc(doc(db, 'tenants', channel.id), {
           aiPrompt,
           voiceTone: finalVoiceTone,
+          'contentConfig.voiceId': finalVoiceTone,
+          'contentConfig.ttsProvider': finalVoiceTone.startsWith('elevenlabs:') ? 'elevenlabs' : 'edge',
           targetDuration,
           updatedAt: new Date().toISOString()
         });
