@@ -170,6 +170,25 @@ async function searchPexelsVideos(query, pexelsApiKey = null, count = 6) {
 }
 
 /**
+ * Checks if the search query is about a specific franchise, movie, character, game, celebrity, or news event.
+ * Stock video platforms (Pexels, Pixabay, Wikimedia) never have footage for these, returning fake generic actors instead.
+ */
+export function isSpecificTopicOrEntity(query) {
+  if (!query) return false;
+  const q = query.toLowerCase();
+
+  const specificPatterns = [
+    /\b(avengers|marvel|mcu|doom|doomsday|iron\s*man|robert\s*downey|russo|thor|loki|captain\s*america|spider-?man|batman|superman|joker|star\s*wars|darth\s*vader|anime|naruto|goku|one\s*piece|attack\s*on\s*titan|death\s*note|demon\s*slayer|dragon\s*ball)\b/i,
+    /\b(gta|grand\s*theft\s*auto|minecraft|zelda|fortnite|playstation|xbox|nintendo|pokemon|cyberpunk|resident\s*evil|witcher|god\s*of\s*war|elden\s*ring)\b/i,
+    /\b(elon\s*musk|messi|cristiano|ronaldo|neymar|trump|biden|putin|bill\s*gates|steve\s*jobs|mark\s*zuckerberg|taylor\s*swift|mrbeast|pele|senna)\b/i,
+    /\b(iphone|samsung\s*galaxy|tesla|spacex|nasa|openai|chatgpt)\b/i,
+    /\b(filme|movie|trailer|ator|actor|actress|personagem|character|vil[aã]o|hero|heroi|comic|hq|serie|series)\b/i
+  ];
+
+  return specificPatterns.some(pattern => pattern.test(q));
+}
+
+/**
  * Searches real web video candidates from Web/Wikimedia/Pixabay/Pexels for a given scene query.
  *
  * @param {Object} options
@@ -188,6 +207,12 @@ export async function searchWebVideoCandidates({
   const q = cleanQuery(query);
   if (!q) return [];
 
+  // For specific franchises, games, celebrities, or movies, stock video sites return fake doctors/unrelated junk.
+  // We return [] so the pipeline immediately uses Google/Bing real 4K official web media + motion.
+  if (isSpecificTopicOrEntity(q)) {
+    return [];
+  }
+
   const results = [];
 
   // 1. First priority: Wikimedia Commons & Open Web Video Repositories
@@ -204,10 +229,10 @@ export async function searchWebVideoCandidates({
     } catch (e) {}
   }
 
-  // 3. Third priority: Pexels Videos (High Definition Portrait)
-  if (pexelsApiKey) {
+  // 3. Fallback: Pexels portrait videos
+  if (results.length < count && pexelsApiKey) {
     try {
-      const pexelsClips = await searchPexelsVideos(q, pexelsApiKey, count);
+      const pexelsClips = await searchPexelsVideos(q, pexelsApiKey, count - results.length);
       results.push(...pexelsClips);
     } catch (e) {}
   }
