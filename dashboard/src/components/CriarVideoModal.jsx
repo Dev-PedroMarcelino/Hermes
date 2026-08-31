@@ -4,7 +4,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import {
   X, Sparkles, Layers, Cpu, CheckCircle2, Rocket, AlertCircle,
   Image as ImageIcon, RefreshCw, ZoomIn, ExternalLink, Globe, Palette, Film,
-  Search, Volume2, Hash, Plus
+  Search, Volume2, Hash, Plus, Play
 } from 'lucide-react';
 import { generateImagePreview, searchSingleImage, getProxyImageUrl, triggerVideoJob } from '../lib/engineApi';
 
@@ -35,7 +35,7 @@ export default function CriarVideoModal({
   const [sceneCustomQueries, setSceneCustomQueries] = useState({});
   const [sceneSearching, setSceneSearching] = useState({});
   const [sceneAlternatives, setSceneAlternatives] = useState({});
-  const [zoomedImage, setZoomedImage] = useState(null);
+  const [zoomedMedia, setZoomedMedia] = useState(null);
 
   // Estados de Criação do Job
   const [criando, setCriando] = useState(false);
@@ -395,11 +395,19 @@ export default function CriarVideoModal({
                   {carregandoPreview ? (
                     <>
                       <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                      Buscando Prévia...
+                      Buscando Prévia de Cenas...
+                    </>
+                  ) : mediaPreference === 'web_video' || mediaPreference === 'pexels' ? (
+                    <>
+                      <Film size={16} /> Ver Prévia de Vídeos da Web
+                    </>
+                  ) : mediaPreference === 'ai_image' ? (
+                    <>
+                      <Palette size={16} /> Ver Prévia de Arte IA
                     </>
                   ) : (
                     <>
-                      <ImageIcon size={16} /> Ver Prévia de Imagens
+                      <Globe size={16} /> Ver Prévia de Fotos Reais
                     </>
                   )}
                 </button>
@@ -543,17 +551,28 @@ export default function CriarVideoModal({
                           </div>
                         )}
 
-                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '8px', background: 'linear-gradient(to top, rgba(0,0,0,0.85), transparent)', display: 'flex', justifyContent: 'space-between' }}>
-                          <button
-                            type="button"
-                            onClick={() => setZoomedImage(currentImgUrl)}
-                            className="btn-secondary"
-                            style={{ padding: '4px 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            <ZoomIn size={11} /> Ampliar
-                          </button>
+                        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '8px', background: 'linear-gradient(to top, rgba(0,0,0,0.85), transparent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          {scene.videoUrl || (currentImgUrl && (currentImgUrl.includes('.mp4') || currentImgUrl.includes('.webm'))) ? (
+                            <button
+                              type="button"
+                              onClick={() => setZoomedMedia({ url: scene.videoUrl || currentImgUrl, isVideo: true, title: `Cena ${idx + 1}` })}
+                              className="btn-secondary"
+                              style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px', background: 'rgba(16, 185, 129, 0.25)', color: '#10b981', borderColor: '#10b981', fontWeight: 700 }}
+                            >
+                              <Play size={12} /> Prévia do Vídeo
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setZoomedMedia({ url: currentImgUrl, isVideo: false, title: `Cena ${idx + 1}` })}
+                              className="btn-secondary"
+                              style={{ padding: '4px 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                              <ZoomIn size={11} /> Ampliar
+                            </button>
+                          )}
 
-                          <a href={currentImgUrl} target="_blank" rel="noreferrer" style={{ color: '#fff', background: 'rgba(0,0,0,0.6)', padding: '4px 6px', borderRadius: '4px' }}>
+                          <a href={scene.videoUrl || currentImgUrl} target="_blank" rel="noreferrer" style={{ color: '#fff', background: 'rgba(0,0,0,0.6)', padding: '4px 6px', borderRadius: '4px' }}>
                             <ExternalLink size={11} />
                           </a>
                         </div>
@@ -647,24 +666,36 @@ export default function CriarVideoModal({
         </div>
       </div>
 
-      {/* Modal Zoom */}
-      {zoomedImage && (
+      {/* Modal Zoom / Player de Vídeo */}
+      {zoomedMedia && (
         <div
-          onClick={() => setZoomedImage(null)}
+          onClick={() => setZoomedMedia(null)}
           style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             background: 'rgba(0, 0, 0, 0.95)', zIndex: 1400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
           }}
         >
-          <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-            <img
-              src={getProxyImageUrl(zoomedImage)}
-              alt="Zoomed"
-              referrerPolicy="no-referrer"
-              style={{ maxHeight: '82vh', maxWidth: '90vw', borderRadius: '12px', border: '1px solid #00ff87' }}
-            />
-            <button type="button" onClick={() => setZoomedImage(null)} className="gradient-btn" style={{ padding: '6px 18px', fontSize: '12px' }}>
-              Fechar Zoom
+          <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', maxWidth: '90vw' }}>
+            {zoomedMedia.isVideo || (zoomedMedia.url && (zoomedMedia.url.endsWith('.mp4') || zoomedMedia.url.endsWith('.webm'))) ? (
+              <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', border: '1px solid #10b981', boxShadow: '0 0 40px rgba(16, 185, 129, 0.3)' }}>
+                <video
+                  src={zoomedMedia.url}
+                  controls
+                  autoPlay
+                  loop
+                  style={{ maxHeight: '80vh', maxWidth: '450px', display: 'block', background: '#000' }}
+                />
+              </div>
+            ) : (
+              <img
+                src={getProxyImageUrl(zoomedMedia.url || zoomedMedia)}
+                alt="Zoomed"
+                referrerPolicy="no-referrer"
+                style={{ maxHeight: '82vh', maxWidth: '90vw', borderRadius: '12px', border: '1px solid #10b981' }}
+              />
+            )}
+            <button type="button" onClick={() => setZoomedMedia(null)} className="gradient-btn" style={{ padding: '8px 22px', fontSize: '12px' }}>
+              Fechar Prévia
             </button>
           </div>
         </div>

@@ -273,9 +273,30 @@ export default function CriarPautaManual() {
                 onClick={() => setShowPreview(true)}
                 disabled={!tema.trim()}
                 className="btn-secondary"
-                style={{ padding: '11px 20px', fontSize: '13px' }}
+                style={{
+                  padding: '11px 20px',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: '#10b981',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  borderColor: 'rgba(16, 185, 129, 0.3)'
+                }}
               >
-                <ImageIcon size={16} /> Ver Prévia de Imagens
+                {mediaTypePreference === 'web_video' || mediaTypePreference === 'pexels' ? (
+                  <>
+                    <Film size={16} /> Ver Prévia de Vídeos da Web
+                  </>
+                ) : mediaTypePreference === 'ai_image' ? (
+                  <>
+                    <Sparkles size={16} /> Ver Prévia de Arte IA
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon size={16} /> Ver Prévia de Fotos Reais
+                  </>
+                )}
               </button>
 
               <button
