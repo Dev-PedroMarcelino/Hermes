@@ -172,7 +172,8 @@ export default function CriarPautaManual() {
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
                 {[
-                  { id: 'google_image', label: '🌐 Web Real (Recomendado)', desc: '100% Fiel ao Tema + Vídeo 9:16' },
+                  { id: 'web_video', label: '🌐 Vídeos da Web (≤10s)', desc: 'Clipes reais da internet' },
+                  { id: 'google_image', label: '📷 Fotos Reais Web', desc: 'Google Imagens + Motion' },
                   { id: 'ai_image', label: '🎨 Arte IA (Flux 9:16)', desc: 'Ilustração cinematográfica' },
                   { id: 'pexels', label: '🎬 Stock Pexels', desc: 'Apenas Natureza e Cidades' }
                 ].map(opt => {
