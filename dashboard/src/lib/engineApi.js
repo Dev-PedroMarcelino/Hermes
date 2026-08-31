@@ -200,6 +200,8 @@ export function getProxyImageUrl(url) {
   if (!url) return '';
   if (url.startsWith('https://image.pollinations.ai')) return url;
   if (url.startsWith('https://images.pexels.com')) return url;
-  return `${BASE_URL}/api/preview/proxy-image?url=${encodeURIComponent(url)}`;
+  if (url.includes('ytimg.com') || url.includes('youtube.com')) return url;
+  // wsrv.nl handles image decoding, headers, webp conversion and bypasses strict anti-hotlink blocks
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=webp`;
 }
 

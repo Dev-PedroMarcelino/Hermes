@@ -57,6 +57,22 @@ function generatePollinationsUrls(prompt, count = 4) {
   });
 }
 
+function isSceneTargetVideo(index, totalSections, sectionMediaType) {
+  if (sectionMediaType === 'video') return true;
+  if (sectionMediaType === 'image') return false;
+  // Favor videos over photos (e.g. 3 videos and 2 photos for 5 scenes, 4 videos and 2 photos for 6 scenes)
+  const imageIndicesMap = {
+    3: [1],
+    4: [1],
+    5: [1, 4],
+    6: [1, 5],
+    7: [1, 5],
+    8: [1, 4, 7]
+  };
+  const imageIndices = imageIndicesMap[totalSections] || [1, 4];
+  return !imageIndices.includes(index);
+}
+
 /**
  * Generates structured video scenes with Gemini and brings visual choices for each scene (fast 2-3s cuts).
  *
@@ -64,7 +80,7 @@ function generatePollinationsUrls(prompt, count = 4) {
  * @param {string} options.tenantId Channel ID
  * @param {string} [options.topic] Theme/Subject
  * @param {string} [options.instruction] Direct operator instructions
- * @param {string} [options.mediaPreference='google_image'] 'google_image' | 'ai_image'
+ * @param {string} [options.mediaPreference='web_video'] 'web_video' | 'google_image' | 'ai_image'
  * @returns {Promise<Object>} Video overview and scenes with images
  */
 export async function generateImagePreview({
@@ -125,8 +141,8 @@ export async function generateImagePreview({
       const concreteQuery = buildConcreteSceneQuery(mainVisualTheme, rawQuery, index);
       const aiPrompt = section.imagePrompt || concreteQuery;
 
-      // Determine scene target media: respect section.mediaType or alternate for dynamic hybrid rhythm
-      const shouldBeVideo = preferWebVideos && (section.mediaType ? section.mediaType === 'video' : (index === 0 || index % 2 === 0));
+      // Determine scene target media: respect section.mediaType or guarantee majority of videos
+      const shouldBeVideo = preferWebVideos && isSceneTargetVideo(index, sections.length, section.mediaType);
 
       let candidateUrls = [];
       let videoInfo = null;
@@ -169,8 +185,8 @@ export async function generateImagePreview({
       const isVideoScene = Boolean(videoInfo);
 
       // For image scenes, build subCuts showing the 2 to 3 photos that alternate every 2.5s
-      const subCuts = !isVideoScene && candidateUrls.length > 1
-        ? candidateUrls.slice(0, 3).map((url, cutIdx) => ({
+      const subCuts = !isVideoScene
+        ? (candidateUrls.length > 0 ? candidateUrls.slice(0, 3) : generatePollinationsUrls(aiPrompt, 3)).map((url, cutIdx) => ({
             cutIndex: cutIdx + 1,
             url,
             durationEstSeconds: 2.5

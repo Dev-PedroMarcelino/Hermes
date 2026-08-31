@@ -32,6 +32,8 @@ export default function CriarVideoModal({
 
   // Estados de Imagens por Cena (Troca e busca individual)
   const [activeImages, setActiveImages] = useState({});
+  const [sceneSubCuts, setSceneSubCuts] = useState({});
+  const [activeSubCutIndex, setActiveSubCutIndex] = useState({});
   const [sceneCustomQueries, setSceneCustomQueries] = useState({});
   const [sceneSearching, setSceneSearching] = useState({});
   const [sceneAlternatives, setSceneAlternatives] = useState({});
@@ -78,12 +80,18 @@ export default function CriarVideoModal({
 
       const initialMap = {};
       const initialAlts = {};
+      const initialSubCuts = {};
       (preview.scenes || []).forEach((scene, idx) => {
         initialMap[idx] = scene.imageUrl;
         initialAlts[idx] = [scene.imageUrl, ...(scene.alternativeUrls || [])].filter(Boolean);
+        if (scene.subCuts && scene.subCuts.length > 0) {
+          initialSubCuts[idx] = [...scene.subCuts];
+        }
       });
       setActiveImages(initialMap);
       setSceneAlternatives(initialAlts);
+      setSceneSubCuts(initialSubCuts);
+      setActiveSubCutIndex({});
     } catch (err) {
       console.error('Erro ao buscar prévia de imagens:', err);
       setErro(err.message || 'Falha ao gerar prévia de imagens.');
@@ -91,6 +99,22 @@ export default function CriarVideoModal({
       setCarregandoPreview(false);
       setLoadingStep('');
     }
+  };
+
+  // Troca imagem de um sub-corte específico ou da cena principal
+  const handleSelectAlternative = (sceneIndex, altUrl) => {
+    setActiveImages(prev => ({ ...prev, [sceneIndex]: altUrl }));
+
+    const targetCutIdx = activeSubCutIndex[sceneIndex] ?? 0;
+    setSceneSubCuts(prev => {
+      const existing = prev[sceneIndex] || [];
+      if (existing.length === 0) return prev;
+      const updated = [...existing];
+      if (updated[targetCutIdx]) {
+        updated[targetCutIdx] = { ...updated[targetCutIdx], url: altUrl };
+      }
+      return { ...prev, [sceneIndex]: updated };
+    });
   };
 
   // Re-busca de imagem para uma cena específica
@@ -594,21 +618,70 @@ export default function CriarVideoModal({
                         </div>
                       )}
 
-                      {/* Cortes Rápidos de Fotos (2-3s) para Cenas de Imagem */}
-                      {!scene.isVideo && scene.subCuts && scene.subCuts.length > 0 && (
-                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                          <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                            ⚡ Cortes Rápidos desta Cena (troca a cada 2.5s):
-                          </span>
-                          <div style={{ display: 'flex', gap: '6px' }}>
-                            {scene.subCuts.map((cut, cutIdx) => (
-                              <div key={cutIdx} style={{ position: 'relative', width: '48px', height: '64px', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                                <img src={getProxyImageUrl(cut.url)} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                <span style={{ position: 'absolute', bottom: '2px', left: '2px', fontSize: '8px', background: 'rgba(0,0,0,0.75)', color: '#00ff87', padding: '1px 3px', borderRadius: '2px', fontWeight: 800 }}>
-                                  ~{cut.durationEstSeconds}s
-                                </span>
-                              </div>
-                            ))}
+                      {/* Cortes Rápidos de Fotos (2-3s) para Cenas de Imagem com Seleção Interativa */}
+                      {!scene.isVideo && (
+                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-secondary)' }}>
+                              ⚡ Cortes Rápidos (~2.5s cada):
+                            </span>
+                            <span style={{ fontSize: '9px', color: '#00ff87', fontWeight: 700 }}>
+                              Clique no corte para trocar ⬇
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            {(sceneSubCuts[idx] || scene.subCuts || []).map((cut, cutIdx) => {
+                              const isCutSelected = (activeSubCutIndex[idx] ?? 0) === cutIdx;
+                              return (
+                                <div
+                                  key={cutIdx}
+                                  onClick={() => {
+                                    setActiveSubCutIndex(prev => ({ ...prev, [idx]: cutIdx }));
+                                    setActiveImages(prev => ({ ...prev, [idx]: cut.url }));
+                                  }}
+                                  style={{
+                                    position: 'relative',
+                                    width: '56px',
+                                    height: '76px',
+                                    borderRadius: '6px',
+                                    overflow: 'hidden',
+                                    cursor: 'pointer',
+                                    border: isCutSelected ? '2px solid #00ff87' : '1px solid var(--border-color)',
+                                    boxShadow: isCutSelected ? '0 0 12px rgba(0, 255, 135, 0.45)' : 'none',
+                                    transform: isCutSelected ? 'scale(1.04)' : 'scale(1)',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <img
+                                    src={getProxyImageUrl(cut.url)}
+                                    alt=""
+                                    referrerPolicy="no-referrer"
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    onError={(e) => {
+                                      if (!e.target.dataset.triedFallback) {
+                                        e.target.dataset.triedFallback = 'true';
+                                        e.target.src = `https://wsrv.nl/?url=${encodeURIComponent(cut.url)}&output=webp`;
+                                      }
+                                    }}
+                                  />
+                                  <span style={{
+                                    position: 'absolute',
+                                    bottom: '2px',
+                                    left: '2px',
+                                    right: '2px',
+                                    fontSize: '8px',
+                                    background: isCutSelected ? '#00ff87' : 'rgba(0,0,0,0.8)',
+                                    color: isCutSelected ? '#000' : '#00ff87',
+                                    padding: '1px 2px',
+                                    borderRadius: '2px',
+                                    fontWeight: 800,
+                                    textAlign: 'center'
+                                  }}>
+                                    {isCutSelected ? `✓ Corte ${cutIdx + 1}` : `Corte ${cutIdx + 1}`}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -620,7 +693,7 @@ export default function CriarVideoModal({
                       {/* Alternativas */}
                       <div>
                         <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                          Alternativas:
+                          Alternativas (Clique para aplicar no corte selecionado):
                         </span>
                         <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
                           {alternatives.map((altUrl, altIdx) => {
@@ -628,13 +701,24 @@ export default function CriarVideoModal({
                             return (
                               <div
                                 key={altIdx}
-                                onClick={() => setActiveImages(prev => ({ ...prev, [idx]: altUrl }))}
+                                onClick={() => handleSelectAlternative(idx, altUrl)}
                                 style={{
                                   width: '46px', height: '62px', flexShrink: 0, borderRadius: '4px', overflow: 'hidden', cursor: 'pointer',
                                   border: isSelected ? '2px solid #00ff87' : '1px solid var(--border-color)', opacity: isSelected ? 1 : 0.6
                                 }}
                               >
-                                <img src={getProxyImageUrl(altUrl)} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <img
+                                  src={getProxyImageUrl(altUrl)}
+                                  alt=""
+                                  referrerPolicy="no-referrer"
+                                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  onError={(e) => {
+                                    if (!e.target.dataset.triedFallback) {
+                                      e.target.dataset.triedFallback = 'true';
+                                      e.target.src = `https://wsrv.nl/?url=${encodeURIComponent(altUrl)}&output=webp`;
+                                    }
+                                  }}
+                                />
                               </div>
                             );
                           })}
