@@ -300,10 +300,9 @@ export default function CriarVideoModal({
                 </span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   {[
-                    { id: 'web_video', label: '🌐 Vídeos da Web (≤10s)', icon: Film },
-                    { id: 'google_image', label: '📷 Fotos Reais Web', icon: Globe },
-                    { id: 'ai_image', label: '🎨 Arte IA (Flux)', icon: Palette },
-                    { id: 'pexels', label: '🎬 Stock Pexels', icon: Sparkles }
+                    { id: 'google_image', label: '🌐 Web Real (100% no Tema)', icon: Globe },
+                    { id: 'ai_image', label: '🎨 Arte IA (Flux 9:16)', icon: Palette },
+                    { id: 'pexels', label: '🎬 Stock (Natureza/Cidade)', icon: Sparkles }
                   ].map((mode) => {
                     const Icon = mode.icon;
                     const isSelected = mediaPreference === mode.id;
