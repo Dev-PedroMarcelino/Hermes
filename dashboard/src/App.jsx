@@ -1,4 +1,3 @@
-// Hermes Omnichannel Content Factory Dashboard
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from './firebase';
@@ -7,19 +6,37 @@ import MonitorProducao from './components/MonitorProducao';
 import GerenciadorCanais from './components/GerenciadorCanais';
 import CriarPautaManual from './components/CriarPautaManual';
 import ConfiguracoesGlobaisModal from './components/ConfiguracoesGlobaisModal';
-import { Video, Radio, Film, Zap, Settings, CheckCircle2, AlertCircle, X, LogOut, Loader2 } from 'lucide-react';
+import CriarVideoModal from './components/CriarVideoModal';
+import { 
+  Video, Radio, Film, Zap, Settings, CheckCircle2, AlertCircle, 
+  X, LogOut, Loader2, Plus, Sparkles, LayoutDashboard, ChevronRight
+} from 'lucide-react';
 
 const NOMES_DE_REDE = { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram' };
+
+const TAB_INFOS = {
+  manual: {
+    title: 'Criar Pauta & Minisséries',
+    description: 'Estúdio de criação de roteiros com IA, ganchos e séries virais'
+  },
+  canais: {
+    title: 'Gerenciador de Canais',
+    description: 'Controle de canais dark, regras de IA, vozes e conexões sociais'
+  },
+  monitor: {
+    title: 'Monitor de Produção Ao Vivo',
+    description: 'Acompanhamento em tempo real da esteira autônoma da IA'
+  }
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('manual');
   const [showSettings, setShowSettings] = useState(false);
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [oauthResult, setOauthResult] = useState(null);
   const [operador, setOperador] = useState(null);
   const [verificandoSessao, setVerificandoSessao] = useState(true);
 
-  // Firebase restores the session from storage asynchronously, so we must wait
-  // before deciding whether to show the login screen.
   useEffect(() => {
     return onAuthStateChanged(auth, user => {
       setOperador(user);
@@ -27,9 +44,6 @@ export default function App() {
     });
   }, []);
 
-  // The engine's OAuth callback redirects the whole browser back here, so the
-  // outcome has to be read at the app level — the modal that started the flow
-  // no longer exists by the time we return.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const outcome = params.get('oauth');
@@ -48,203 +62,311 @@ export default function App() {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        gap: '10px', color: 'var(--text-secondary)', fontSize: '13px'
+        flexDirection: 'column', gap: '14px', color: 'var(--text-secondary)', fontSize: '13px'
       }}>
-        <Loader2 size={18} className="text-accent" style={{ animation: 'spin 1s linear infinite' }} />
-        Verificando sessão...
+        <Loader2 size={24} className="text-accent" style={{ animation: 'spin 1s linear infinite' }} />
+        <span>Iniciando Hermes Factory...</span>
       </div>
     );
   }
 
   if (!operador) return <LoginScreen />;
 
+  const currentTabInfo = TAB_INFOS[activeTab] || TAB_INFOS.manual;
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header Bar Responsiva */}
-      <header style={{
-        borderBottom: '1px solid var(--border-color)',
-        background: 'rgba(6, 9, 12, 0.95)',
-        backdropFilter: 'blur(20px)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50
-      }}>
-        <div className="header-container" style={{
-          maxWidth: '1380px',
-          margin: '0 auto',
-          padding: '16px 28px',
+    <div className="dashboard-layout">
+      
+      {/* SIDEBAR LATERAL FIXA E ELEGANTE */}
+      <aside className="dashboard-sidebar">
+        {/* Brand Header */}
+        <div style={{
+          padding: '24px 20px',
+          borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          gap: '12px'
         }}>
-          {/* Logo Brand */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '300px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <img
-                src="/logo-hermes.png"
-                alt="Hermes"
-                width={44}
-                height={44}
-                style={{
-                  display: 'block',
-                  borderRadius: '50%',
-                  // The logo art is a neon ring on black; the glow does the
-                  // lifting here instead of a background plate.
-                  boxShadow: '0 0 22px rgba(0, 255, 135, 0.35)'
-                }}
-              />
-              <div>
-                <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px' }} className="gradient-text">
-                  HERMES
-                </span>
-                <span style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>
-                  CASH-COW FACTORY
-                </span>
-              </div>
+          <div style={{ position: 'relative' }}>
+            <img
+              src="/logo-hermes.png"
+              alt="Hermes"
+              width={38}
+              height={38}
+              style={{
+                display: 'block',
+                borderRadius: '50%',
+                boxShadow: '0 0 16px rgba(16, 185, 129, 0.4)'
+              }}
+            />
+            <span style={{
+              position: 'absolute',
+              bottom: '-1px',
+              right: '-1px',
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              background: '#10b981',
+              border: '2px solid var(--bg-sidebar)'
+            }} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '16px', fontWeight: 800, letterSpacing: '-0.3px' }} className="gradient-text">
+                HERMES
+              </span>
+              <span style={{
+                fontSize: '9px',
+                fontWeight: 800,
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#10b981',
+                padding: '2px 5px',
+                borderRadius: '4px',
+                border: '1px solid rgba(16, 185, 129, 0.3)'
+              }}>
+                PRO
+              </span>
             </div>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginTop: '1px' }}>
+              Autonomous Content Engine
+            </span>
+          </div>
+        </div>
+
+        {/* Quick Action Button */}
+        <div style={{ padding: '16px 16px 8px' }}>
+          <button
+            onClick={() => setShowQuickCreate(true)}
+            className="gradient-btn"
+            style={{
+              width: '100%',
+              padding: '11px 16px',
+              fontSize: '13px',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            <Plus size={16} /> Novo Vídeo Instantâneo
+          </button>
+        </div>
+
+        {/* Navigation Menu */}
+        <nav style={{ padding: '12px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{
+            fontSize: '10px',
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            color: 'var(--text-muted)',
+            letterSpacing: '0.6px',
+            padding: '8px 12px 4px'
+          }}>
+            Navegação Principal
+          </span>
+
+          <button
+            onClick={() => setActiveTab('manual')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: '11px 14px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: activeTab === 'manual' ? 700 : 500,
+              cursor: 'pointer',
+              color: activeTab === 'manual' ? '#10b981' : 'var(--text-secondary)',
+              background: activeTab === 'manual' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+              border: activeTab === 'manual' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid transparent',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Film size={16} color={activeTab === 'manual' ? '#10b981' : 'currentColor'} />
+              <span>Criar Pauta & Minissérie</span>
+            </div>
+            {activeTab === 'manual' && <ChevronRight size={14} opacity={0.6} />}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('canais')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: '11px 14px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: activeTab === 'canais' ? 700 : 500,
+              cursor: 'pointer',
+              color: activeTab === 'canais' ? '#10b981' : 'var(--text-secondary)',
+              background: activeTab === 'canais' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+              border: activeTab === 'canais' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid transparent',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Radio size={16} color={activeTab === 'canais' ? '#10b981' : 'currentColor'} />
+              <span>Canais & Conexões</span>
+            </div>
+            {activeTab === 'canais' && <ChevronRight size={14} opacity={0.6} />}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('monitor')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: '11px 14px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: activeTab === 'monitor' ? 700 : 500,
+              cursor: 'pointer',
+              color: activeTab === 'monitor' ? '#10b981' : 'var(--text-secondary)',
+              background: activeTab === 'monitor' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+              border: activeTab === 'monitor' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid transparent',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Video size={16} color={activeTab === 'monitor' ? '#10b981' : 'currentColor'} />
+              <span>Monitor de Produção</span>
+            </div>
+            {activeTab === 'monitor' && <ChevronRight size={14} opacity={0.6} />}
+          </button>
+        </nav>
+
+        {/* Sidebar Footer: System Status & User Info */}
+        <div style={{
+          padding: '16px',
+          borderTop: '1px solid var(--border-subtle)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px'
+        }}>
+          {/* Status Indicator Pill */}
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.06)',
+            border: '1px solid rgba(16, 185, 129, 0.18)',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+              Motor Autônomo
+            </span>
+            <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 800 }}>ATIVO</span>
           </div>
 
-          {/* Navigation Tabs com Rolagem Horizontal para Mobile */}
-          <nav className="header-nav" style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setActiveTab('manual')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 18px',
-                borderRadius: '12px',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                color: activeTab === 'manual' ? '#00ff87' : 'var(--text-secondary)',
-                background: activeTab === 'manual' ? 'rgba(0, 255, 135, 0.1)' : 'transparent',
-                border: activeTab === 'manual' ? '1px solid rgba(0, 255, 135, 0.4)' : '1px solid transparent',
-                transition: 'all 0.25s ease'
-              }}
-            >
-              <Film size={17} className={activeTab === 'manual' ? 'text-accent' : ''} />
-              Criar Pauta & Minisséries
-            </button>
-
-            <button
-              onClick={() => setActiveTab('canais')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 18px',
-                borderRadius: '12px',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                color: activeTab === 'canais' ? '#00ff87' : 'var(--text-secondary)',
-                background: activeTab === 'canais' ? 'rgba(0, 255, 135, 0.1)' : 'transparent',
-                border: activeTab === 'canais' ? '1px solid rgba(0, 255, 135, 0.4)' : '1px solid transparent',
-                transition: 'all 0.25s ease'
-              }}
-            >
-              <Radio size={17} className={activeTab === 'canais' ? 'text-accent' : ''} />
-              Gerenciador de Canais
-            </button>
-
-            <button
-              onClick={() => setActiveTab('monitor')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 18px',
-                borderRadius: '12px',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                color: activeTab === 'monitor' ? '#00ff87' : 'var(--text-secondary)',
-                background: activeTab === 'monitor' ? 'rgba(0, 255, 135, 0.1)' : 'transparent',
-                border: activeTab === 'monitor' ? '1px solid rgba(0, 255, 135, 0.4)' : '1px solid transparent',
-                transition: 'all 0.25s ease'
-              }}
-            >
-              <Video size={17} className={activeTab === 'monitor' ? 'text-accent' : ''} />
-              Monitor de Produção Ao Vivo
-            </button>
-          </nav>
-
-          {/* System Status Pill, Settings & Operator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span className="badge badge-active">
-              <Zap size={12} className="text-accent" /> IA ONLINE
-            </span>
-
+          {/* Action Row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
             <button
               onClick={() => setShowSettings(true)}
-              className="btn-secondary"
-              style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+              className="btn-ghost"
+              style={{ fontSize: '12px', padding: '6px 10px', flex: 1, justifyContent: 'flex-start' }}
             >
-              <Settings size={16} /> Configurações
+              <Settings size={14} /> Ajustes
             </button>
 
             <button
               onClick={() => signOut(auth)}
-              className="btn-secondary"
+              className="btn-ghost"
               title={`Sair (${operador.email})`}
-              style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+              style={{ fontSize: '12px', padding: '6px 10px', color: '#ef4444' }}
             >
-              <LogOut size={16} /> Sair
+              <LogOut size={14} /> Sair
             </button>
           </div>
+
+          {/* Operator Profile Tag */}
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Operador: <strong style={{ color: 'var(--text-secondary)' }}>{operador.email}</strong>
+          </div>
         </div>
-      </header>
+      </aside>
 
-      {/* Resultado do retorno do OAuth das redes sociais */}
-      {oauthResult && (
-        <div style={{
-          maxWidth: '1380px', width: '100%', margin: '20px auto 0', padding: '0 28px'
-        }}>
-          <div className="glass-panel" style={{
-            padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start',
-            border: `1px solid ${oauthResult.ok ? 'rgba(0, 255, 135, 0.35)' : 'rgba(255, 71, 87, 0.35)'}`
-          }}>
-            {oauthResult.ok
-              ? <CheckCircle2 size={20} style={{ color: '#00ff87', flexShrink: 0, marginTop: '2px' }} />
-              : <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />}
+      {/* MAIN CANVAS AREA (Espaçoso, sem apertos centrais) */}
+      <div className="dashboard-main">
+        
+        {/* Top Header Bar */}
+        <header className="dashboard-header">
+          <div>
+            <h2 style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {currentTabInfo.title}
+            </h2>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              {currentTabInfo.description}
+            </span>
+          </div>
 
-            <div style={{ flex: 1, fontSize: '13px', lineHeight: 1.6 }}>
-              {oauthResult.ok ? (
-                <>
-                  <strong>{NOMES_DE_REDE[oauthResult.network] || oauthResult.network} conectado!</strong>
-                  {oauthResult.account && <> Conta: {oauthResult.account}.</>}
-                  {' '}Os tokens foram salvos criptografados no cofre do canal.
-                </>
-              ) : (
-                <>
-                  <strong>Falha ao conectar {NOMES_DE_REDE[oauthResult.network] || oauthResult.network}.</strong>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginTop: '4px' }}>
-                    {oauthResult.message}
-                  </div>
-                </>
-              )}
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={() => setShowQuickCreate(true)}
+              className="gradient-btn"
+              style={{ padding: '8px 16px', fontSize: '12px' }}
+            >
+              <Plus size={14} /> Criar Vídeo
+            </button>
+          </div>
+        </header>
 
-            <button onClick={() => setOauthResult(null)} style={{
-              background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer'
+        {/* OAuth Return Banner */}
+        {oauthResult && (
+          <div style={{ padding: '20px 32px 0' }}>
+            <div className="glass-panel" style={{
+              padding: '14px 18px', display: 'flex', gap: '12px', alignItems: 'center',
+              border: `1px solid ${oauthResult.ok ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
+              background: oauthResult.ok ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)'
             }}>
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+              {oauthResult.ok
+                ? <CheckCircle2 size={18} style={{ color: '#10b981', flexShrink: 0 }} />
+                : <AlertCircle size={18} style={{ color: '#ef4444', flexShrink: 0 }} />}
 
-      {/* Main View Container Responsivo */}
-      <main className="main-content" style={{ maxWidth: '1380px', width: '100%', margin: '0 auto', padding: '32px 28px', flex: 1 }}>
-        {activeTab === 'manual' && <CriarPautaManual />}
-        {activeTab === 'canais' && <GerenciadorCanais />}
-        {activeTab === 'monitor' && <MonitorProducao />}
-      </main>
+              <div style={{ flex: 1, fontSize: '13px' }}>
+                {oauthResult.ok ? (
+                  <>
+                    <strong>{NOMES_DE_REDE[oauthResult.network] || oauthResult.network} conectado com sucesso!</strong>
+                    {oauthResult.account && <> Conta: <code>{oauthResult.account}</code>.</>}
+                  </>
+                ) : (
+                  <>
+                    <strong>Falha ao conectar {NOMES_DE_REDE[oauthResult.network] || oauthResult.network}:</strong> {oauthResult.message}
+                  </>
+                )}
+              </div>
+
+              <button onClick={() => setOauthResult(null)} className="btn-ghost" style={{ padding: '4px' }}>
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Main Content Area */}
+        <main className="dashboard-content">
+          {activeTab === 'manual' && <CriarPautaManual />}
+          {activeTab === 'canais' && <GerenciadorCanais />}
+          {activeTab === 'monitor' && <MonitorProducao />}
+        </main>
+      </div>
 
       {/* Modal de Configurações Globais */}
       {showSettings && (
         <ConfiguracoesGlobaisModal onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* Modal de Criação Rápida */}
+      {showQuickCreate && (
+        <CriarVideoModal onClose={() => setShowQuickCreate(false)} />
       )}
     </div>
   );

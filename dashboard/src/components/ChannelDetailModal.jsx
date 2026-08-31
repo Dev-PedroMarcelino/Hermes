@@ -179,8 +179,9 @@ export default function ChannelDetailModal({ channel, onClose }) {
     <div style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(5, 8, 16, 0.88)',
-      backdropFilter: 'blur(14px)',
+      background: 'rgba(4, 7, 13, 0.88)',
+      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
       zIndex: 1000,
       display: 'flex',
       alignItems: 'center',
@@ -194,67 +195,60 @@ export default function ChannelDetailModal({ channel, onClose }) {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        border: '1px solid var(--border-color-light)',
-        boxShadow: '0 20px 60px rgba(20, 167, 108, 0.2)'
+        border: '1px solid var(--border-subtle)',
+        boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5)'
       }}>
         {/* Header do Canal */}
         <div style={{
           padding: '20px 24px',
-          borderBottom: '1px solid var(--border-color)',
+          borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'rgba(255, 255, 255, 0.02)'
+          background: 'var(--bg-header)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '14px',
-              background: '#14a76c',
+              width: '44px',
+              height: '44px',
+              borderRadius: '12px',
+              background: 'var(--accent-gradient)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontWeight: 800,
-              fontSize: '22px',
-              color: '#ffffff'
+              fontSize: '20px',
+              color: '#06090c'
             }}>
               {(channel.name || channel.nome || 'C')[0]}
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <h2 style={{ fontSize: '20px', fontWeight: 800 }}>{channel.name || channel.nome}</h2>
+                <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>{channel.name || channel.nome}</h2>
                 <span className="badge badge-active">AUTÔNOMO</span>
               </div>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                <Tag size={13} className="text-accent" /> {channel.niche || channel.nicho} • ID: <span style={{ fontFamily: 'monospace' }}>{channel.id}</span>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                <Tag size={12} className="text-accent" /> {channel.niche || channel.nicho} • ID: <span style={{ fontFamily: 'monospace' }}>{channel.id}</span>
               </p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button
               onClick={handleDeletarCanal}
               className="btn-danger"
               disabled={deletandoCanal}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+              style={{ fontSize: '12px' }}
             >
-              <Trash2 size={14} /> {deletandoCanal ? 'Excluindo...' : 'Excluir Canal'}
+              <Trash2 size={13} /> {deletandoCanal ? 'Excluindo...' : 'Excluir Canal'}
             </button>
 
             <button
               onClick={onClose}
-              style={{
-                background: 'rgba(116, 116, 116, 0.15)',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text-primary)',
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                cursor: 'pointer'
-              }}
+              className="btn-ghost"
+              style={{ padding: '6px' }}
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
         </div>
@@ -262,10 +256,10 @@ export default function ChannelDetailModal({ channel, onClose }) {
         {/* Abas de Navegação */}
         <div style={{
           display: 'flex',
-          gap: '6px',
-          padding: '12px 24px',
-          borderBottom: '1px solid var(--border-color)',
-          background: 'rgba(14, 17, 17, 0.8)'
+          gap: '4px',
+          padding: '8px 20px',
+          borderBottom: '1px solid var(--border-subtle)',
+          background: 'var(--bg-input)'
         }}>
           <button
             onClick={() => setActiveTab('videos')}
@@ -273,17 +267,17 @@ export default function ChannelDetailModal({ channel, onClose }) {
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              padding: '10px 16px',
-              borderRadius: '10px',
+              padding: '9px 14px',
+              borderRadius: '8px',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: activeTab === 'videos' ? 700 : 500,
               cursor: 'pointer',
-              color: activeTab === 'videos' ? 'var(--accent-green)' : 'var(--text-secondary)',
-              background: activeTab === 'videos' ? 'rgba(20, 167, 108, 0.1)' : 'transparent',
-              border: activeTab === 'videos' ? '1px solid rgba(20, 167, 108, 0.3)' : '1px solid transparent'
+              color: activeTab === 'videos' ? '#10b981' : 'var(--text-secondary)',
+              background: activeTab === 'videos' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+              border: activeTab === 'videos' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent'
             }}
           >
-            <Video size={16} /> Prévias & Vídeos ({channelJobs.length})
+            <Video size={15} /> Prévias & Vídeos ({channelJobs.length})
           </button>
 
           <button
@@ -292,17 +286,17 @@ export default function ChannelDetailModal({ channel, onClose }) {
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              padding: '10px 16px',
-              borderRadius: '10px',
+              padding: '9px 14px',
+              borderRadius: '8px',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: activeTab === 'networks' ? 700 : 500,
               cursor: 'pointer',
-              color: activeTab === 'networks' ? 'var(--accent-green)' : 'var(--text-secondary)',
-              background: activeTab === 'networks' ? 'rgba(20, 167, 108, 0.1)' : 'transparent',
-              border: activeTab === 'networks' ? '1px solid rgba(20, 167, 108, 0.3)' : '1px solid transparent'
+              color: activeTab === 'networks' ? '#10b981' : 'var(--text-secondary)',
+              background: activeTab === 'networks' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+              border: activeTab === 'networks' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent'
             }}
           >
-            <Link2 size={16} /> Conexões de Rede (OAuth)
+            <Link2 size={15} /> Conexões de Rede (OAuth)
           </button>
 
           <button
@@ -311,17 +305,17 @@ export default function ChannelDetailModal({ channel, onClose }) {
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              padding: '10px 16px',
-              borderRadius: '10px',
+              padding: '9px 14px',
+              borderRadius: '8px',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: activeTab === 'metrics' ? 700 : 500,
               cursor: 'pointer',
-              color: activeTab === 'metrics' ? 'var(--accent-green)' : 'var(--text-secondary)',
-              background: activeTab === 'metrics' ? 'rgba(20, 167, 108, 0.1)' : 'transparent',
-              border: activeTab === 'metrics' ? '1px solid rgba(20, 167, 108, 0.3)' : '1px solid transparent'
+              color: activeTab === 'metrics' ? '#10b981' : 'var(--text-secondary)',
+              background: activeTab === 'metrics' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+              border: activeTab === 'metrics' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent'
             }}
           >
-            <BarChart3 size={16} /> Métricas & Alcance
+            <BarChart3 size={15} /> Métricas & Alcance
           </button>
 
           <button
@@ -330,17 +324,17 @@ export default function ChannelDetailModal({ channel, onClose }) {
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              padding: '10px 16px',
-              borderRadius: '10px',
+              padding: '9px 14px',
+              borderRadius: '8px',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: activeTab === 'ai' ? 700 : 500,
               cursor: 'pointer',
-              color: activeTab === 'ai' ? 'var(--accent-green)' : 'var(--text-secondary)',
-              background: activeTab === 'ai' ? 'rgba(20, 167, 108, 0.1)' : 'transparent',
-              border: activeTab === 'ai' ? '1px solid rgba(20, 167, 108, 0.3)' : '1px solid transparent'
+              color: activeTab === 'ai' ? '#10b981' : 'var(--text-secondary)',
+              background: activeTab === 'ai' ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+              border: activeTab === 'ai' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent'
             }}
           >
-            <Bot size={16} /> Configuração da IA & Prompt
+            <Bot size={15} /> Configuração da IA & Prompt
           </button>
         </div>
 

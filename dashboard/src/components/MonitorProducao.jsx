@@ -6,13 +6,9 @@ import { getProgressStage, isFailed } from '../lib/jobStatus';
 import {
   Video, Play, Pause, Youtube, Eye, Trash2, Layers, Cpu, CheckCircle2,
   Clock, Sparkles, Loader2, Share2, ExternalLink, Plus, Zap, RefreshCw, AlertCircle,
-  Image as ImageIcon
+  Film, Activity, CheckCircle
 } from 'lucide-react';
 
-/**
- * The engine's Gemini stage emits `title`; older documents used `titulo`.
- * Read both so the monitor works across the two generations of job records.
- */
 function tituloDoJob(job) {
   return job?.script?.title || job?.script?.titulo || null;
 }
@@ -29,7 +25,7 @@ export default function MonitorProducao() {
   const [showCriarModal, setShowCriarModal] = useState(false);
   const [erroFirestore, setErroFirestore] = useState(null);
 
-  // Escuta os Canais
+  // Escuta Canais
   useEffect(() => {
     const unsubCanais = onSnapshot(collection(db, 'tenants'), (snap) => {
       const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -39,7 +35,7 @@ export default function MonitorProducao() {
     return () => unsubCanais();
   }, []);
 
-  // Escuta a Esteira de Produção de Vídeos no Firestore
+  // Escuta Fila de Produção
   useEffect(() => {
     const jobsQuery = query(collection(db, 'video_jobs'), orderBy('createdAt', 'desc'));
     
@@ -58,9 +54,6 @@ export default function MonitorProducao() {
       setErroFirestore(null);
       setLoading(false);
     }, (error) => {
-      // A Firestore failure used to substitute a fake "published" job here,
-      // which made a broken connection look like a working pipeline. Surface
-      // the real error instead.
       console.error('Erro no listener do Firestore:', error.message);
       setErroFirestore(error.message);
       setJobs([]);
@@ -77,16 +70,9 @@ export default function MonitorProducao() {
   const videosPublicados = jobsFiltrados.filter(j => j.status === 'PUBLISHED');
   const videosEmProducao = jobsFiltrados.filter(j => j.status !== 'PUBLISHED');
 
-  // Progress mapping lives in ../lib/jobStatus.js so it stays in sync with the
-  // engine's JOB_STATUS ladder.
-  //
-  // The old "Avançar Fase" button that used to sit here wrote statuses straight
-  // into Firestore — including a hardcoded YouTube ID — which faked progress
-  // without producing anything. Phases are now driven solely by the worker.
-
   const handleDeletarVideo = async (e, jobId) => {
     if (e) e.stopPropagation();
-    if (!window.confirm('Tem certeza que deseja excluir este vídeo da esteira de produção?')) return;
+    if (!window.confirm('Tem certeza que deseja excluir este vídeo da esteira?')) return;
 
     setDeletandoJobId(jobId);
     setJobs(prev => prev.filter(j => j.id !== jobId));
@@ -142,166 +128,94 @@ export default function MonitorProducao() {
 
       {erroFirestore && (
         <div className="glass-panel" style={{
-          padding: '16px 20px', border: '1px solid rgba(255, 71, 87, 0.35)',
-          display: 'flex', gap: '12px', alignItems: 'flex-start'
+          padding: '14px 18px', border: '1px solid rgba(239, 68, 68, 0.3)',
+          background: 'rgba(239, 68, 68, 0.05)', display: 'flex', gap: '12px', alignItems: 'center'
         }}>
-          <AlertCircle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
-          <div style={{ fontSize: '13px', lineHeight: 1.6 }}>
-            <strong>Não foi possível ler a esteira no Firestore.</strong>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginTop: '4px' }}>
-              {erroFirestore}
-            </div>
+          <AlertCircle size={18} style={{ color: '#ef4444', flexShrink: 0 }} />
+          <div style={{ fontSize: '13px', color: '#fca5a5' }}>
+            Não foi possível sincronizar a esteira no Firestore: {erroFirestore}
           </div>
         </div>
       )}
 
-      {/* Barra Superior com Filtro e Botão + Novo Vídeo Instantâneo */}
-      <div className="glass-panel tech-card" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Layers className="text-accent" size={24} />
+      {/* Top Stats & Filters Bar */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr)) 260px',
+        gap: '16px',
+        alignItems: 'center'
+      }}>
+        {/* KPI 1 */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Activity size={20} color="#10b981" />
+          </div>
           <div>
-            <h3 style={{ fontSize: '18px', fontWeight: 800 }}>Monitor de Produção Ao Vivo</h3>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Acompanhe em tempo real a evolução da esteira da IA</span>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Em Produção</span>
+            <h4 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>{videosEmProducao.length}</h4>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-              Canal:
-            </label>
-            <select
-              className="input-field"
-              style={{ width: '220px' }}
-              value={selectedTenant}
-              onChange={(e) => setSelectedTenant(e.target.value)}
-            >
-              <option value="ALL">🌐 Todos os Canais</option>
-              {canais.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name || c.nome}
-                </option>
-              ))}
-            </select>
+        {/* KPI 2 */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(6, 182, 212, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CheckCircle size={20} color="#06b6d4" />
           </div>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Vídeos Concluídos</span>
+            <h4 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>{videosPublicados.length}</h4>
+          </div>
+        </div>
 
-          <button
-            onClick={() => setShowCriarModal(true)}
-            className="gradient-btn"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: 800 }}
+        {/* KPI 3 */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Zap size={20} color="#f59e0b" />
+          </div>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Esteira Autônoma</span>
+            <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#10b981', marginTop: '2px' }}>IA 24H ONLINE</h4>
+          </div>
+        </div>
+
+        {/* Seletor de Canal */}
+        <div className="glass-panel" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Layers size={16} className="text-accent" />
+          <select
+            className="input-field"
+            style={{ border: 'none', background: 'transparent', padding: '4px', fontSize: '13px', fontWeight: 600 }}
+            value={selectedTenant}
+            onChange={(e) => setSelectedTenant(e.target.value)}
           >
-            <Plus size={18} /> Criar Novo Vídeo
-          </button>
+            <option value="ALL">Todos os Canais</option>
+            {canais.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name || c.nome}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* Grid Principal em 2 Colunas */}
-      <div className="grid-responsive-2" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
+      {/* Grid Principal com Esteira à Esquerda e Player à Direita */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: '24px' }}>
         
-        {/* COLUNA 1: VÍDEOS PUBLICADOS & PLAYER DO YOUTUBE */}
-        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
-            <h4 style={{ fontSize: '16px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Youtube size={20} style={{ color: '#ff0000' }} /> Vídeos Publicados ({videosPublicados.length})
-            </h4>
-            <span className="badge badge-active">NO AR</span>
-          </div>
-
-          {/* Player do YouTube Incorporado */}
-          {activeEmbedVideo && (
-            <div style={{ background: '#000', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>
-              {getYoutubeEmbedId(activeEmbedVideo) ? (
-                <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0 }}>
-                  <iframe
-                    src={`https://www.youtube.com/embed/${getYoutubeEmbedId(activeEmbedVideo)}?autoplay=0&rel=0`}
-                    title="Player do YouTube"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-                  />
-                </div>
-              ) : (
-                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  <Video size={40} style={{ margin: '0 auto 12px', opacity: 0.4, color: '#00ff87' }} />
-                  <p style={{ fontSize: '14px', fontWeight: 600 }}>{tituloDoJob(activeEmbedVideo)}</p>
-                </div>
-              )}
-
-              <div style={{ padding: '16px', background: 'rgba(11, 16, 21, 0.95)', borderTop: '1px solid var(--border-color)' }}>
-                <h5 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '6px' }}>
-                  {tituloDoJob(activeEmbedVideo) || 'Vídeo Publicado'}
-                </h5>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-                  "{activeEmbedVideo.script?.roteiro_locucao || 'Roteiro gerado pela IA'}"
-                </p>
-              </div>
+        {/* COLUNA 1: ESTEIRA DE PRODUÇÃO (FILA ATIVA) */}
+        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '14px', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Cpu size={18} className="text-accent" />
+              <h4 style={{ fontSize: '15px', fontWeight: 800 }}>Fila de Processamento em Tempo Real</h4>
             </div>
-          )}
-
-          {/* Lista de Vídeos Publicados */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', overflowY: 'auto' }}>
-            {videosPublicados.length === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                Nenhum vídeo publicado ainda para o canal selecionado.
-              </div>
-            ) : (
-              videosPublicados.map((job) => (
-                <div
-                  key={job.id}
-                  onClick={() => setActiveEmbedVideo(job)}
-                  style={{
-                    background: activeEmbedVideo?.id === job.id ? 'rgba(0, 255, 135, 0.08)' : 'rgba(255,255,255,0.02)',
-                    border: activeEmbedVideo?.id === job.id ? '1px solid #00ff87' : '1px solid var(--border-color)',
-                    padding: '14px 16px',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <div style={{ maxWidth: '75%' }}>
-                    <h5 style={{ fontSize: '14px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {tituloDoJob(job) || 'Vídeo sem título'}
-                    </h5>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                      {job.createdAt ? new Date(job.createdAt).toLocaleTimeString() : 'Publicado'}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button className="btn-secondary" style={{ padding: '6px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Play size={12} /> Assistir
-                    </button>
-                    <button
-                      onClick={(e) => handleDeletarVideo(e, job.id)}
-                      className="btn-danger"
-                      style={{ padding: '6px 8px', borderRadius: '6px' }}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* COLUNA 2: VÍDEOS EM PRODUÇÃO COM BARRA E BOTÃO DE AVANÇO */}
-        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
-            <h4 style={{ fontSize: '16px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Cpu className="text-accent" size={20} /> Esteira de Produção & Fila ({videosEmProducao.length})
-            </h4>
-            <span className="badge badge-pending">EM ANDAMENTO</span>
+            <span className="badge badge-pending">{videosEmProducao.length} em esteira</span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '680px', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '680px', overflowY: 'auto' }}>
             {videosEmProducao.length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                <Clock size={32} style={{ margin: '0 auto 10px', opacity: 0.4 }} />
-                Nenhum vídeo em fila no momento. Clique no botão <strong>+ Criar Novo Vídeo</strong> acima!
+              <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <Clock size={36} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
+                <h5 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-secondary)' }}>Nenhum vídeo na fila no momento</h5>
+                <p style={{ fontSize: '12px', marginTop: '4px' }}>Clique em "Novo Vídeo" para iniciar uma produção agora.</p>
               </div>
             ) : (
               videosEmProducao.map((job) => {
@@ -312,128 +226,75 @@ export default function MonitorProducao() {
                   <div
                     key={job.id}
                     style={{
-                      background: 'rgba(6, 9, 12, 0.95)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '14px',
-                      padding: '18px',
+                      background: 'var(--bg-input)',
+                      border: `1px solid ${falhou ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-subtle)'}`,
+                      borderRadius: '12px',
+                      padding: '16px',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '14px'
+                      gap: '12px'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                       <div>
-                        <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-                          ID: {job.id}
+                        <span style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                          JOB #{job.id.slice(-8)}
                         </span>
-                        <h5 style={{ fontSize: '15px', fontWeight: 700, marginTop: '2px' }}>
-                          {tituloDoJob(job) || 'Processando Roteiro Gemini...'}
+                        <h5 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {tituloDoJob(job) || 'Processando Roteiro com Gemini...'}
                         </h5>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button
-                          onClick={(e) => handleEnviarNovamente(e, job.id)}
-                          className="btn-secondary"
-                          title="Reiniciar este vídeo do zero na esteira de produção"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            padding: '6px 12px',
-                            borderRadius: '8px',
-                            background: 'rgba(0, 255, 135, 0.10)',
-                            color: '#00ff87',
-                            border: '1px solid rgba(0, 255, 135, 0.3)',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <RefreshCw size={12} /> Enviar Novamente
-                        </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {falhou && (
+                          <button
+                            onClick={(e) => handleEnviarNovamente(e, job.id)}
+                            className="btn-secondary"
+                            style={{ fontSize: '11px', padding: '5px 10px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                          >
+                            <RefreshCw size={11} /> Tentar Novamente
+                          </button>
+                        )}
                         <button
                           onClick={(e) => handleDeletarVideo(e, job.id)}
-                          className="btn-danger"
-                          style={{ padding: '6px 8px', borderRadius: '8px' }}
-                          title="Excluir vídeo"
+                          className="btn-ghost"
+                          style={{ padding: '6px', color: 'var(--text-muted)' }}
+                          title="Remover"
                         >
                           <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
 
-                    {/* BARRA DE PROGRESSO EM TEMPO REAL */}
+                    {/* Barra de Progresso Suave */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
                         <span style={{
-                          color: falhou ? '#ff4757' : '#00ff87',
+                          color: falhou ? '#ef4444' : '#10b981',
                           fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px'
                         }}>
-                          {falhou
-                            ? <AlertCircle size={13} />
-                            : <Loader2 size={13} style={{ animation: 'spin 2s linear infinite' }} />}
-                          {falhou ? 'Falhou' : stage.label}
+                          {falhou ? <AlertCircle size={12} /> : <Loader2 size={12} style={{ animation: 'spin 1.5s linear infinite' }} />}
+                          {falhou ? 'Erro no processamento' : stage.label}
                         </span>
-                        <span style={{
-                          color: falhou ? '#ff4757' : '#00ff87',
-                          fontWeight: 800, fontFamily: 'monospace'
-                        }}>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 700, fontFamily: 'monospace' }}>
                           {stage.percent}%
                         </span>
                       </div>
 
-                      <div style={{
-                        width: '100%',
-                        height: '8px',
-                        background: 'rgba(255, 255, 255, 0.08)',
-                        borderRadius: '10px',
-                        overflow: 'hidden'
-                      }}>
+                      <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '6px', overflow: 'hidden' }}>
                         <div style={{
                           width: `${stage.percent}%`,
                           height: '100%',
-                          background: falhou
-                            ? 'linear-gradient(90deg, #ff4757, #ff6b81)'
-                            : 'linear-gradient(90deg, #00ff87, #60efff)',
-                          borderRadius: '10px',
-                          boxShadow: falhou
-                            ? '0 0 12px rgba(255, 71, 87, 0.6)'
-                            : '0 0 12px rgba(0, 255, 135, 0.6)',
+                          background: falhou ? '#ef4444' : 'var(--accent-gradient)',
+                          borderRadius: '6px',
                           transition: 'width 0.4s ease'
                         }} />
                       </div>
 
-                      {falhou && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-                          {job.errorMessage && (
-                            <span style={{ fontSize: '11px', color: '#ff9aa5', lineHeight: 1.5 }}>
-                              {job.errorMessage}
-                            </span>
-                          )}
-                          <button
-                            onClick={(e) => handleEnviarNovamente(e, job.id)}
-                            className="btn-secondary"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '6px',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              padding: '8px 14px',
-                              borderRadius: '8px',
-                              width: 'fit-content',
-                              background: 'rgba(255, 71, 87, 0.15)',
-                              color: '#ff4757',
-                              border: '1px solid rgba(255, 71, 87, 0.35)',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s ease'
-                            }}
-                          >
-                            <RefreshCw size={13} /> Enviar Novamente
-                          </button>
-                        </div>
+                      {falhou && job.errorMessage && (
+                        <span style={{ fontSize: '11px', color: '#fca5a5', marginTop: '2px', lineHeight: 1.4 }}>
+                          {job.errorMessage}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -443,9 +304,99 @@ export default function MonitorProducao() {
           </div>
         </div>
 
+        {/* COLUNA 2: VÍDEOS PUBLICADOS & PREVIEW PLAYER */}
+        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '14px', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Film size={18} className="text-accent" />
+              <h4 style={{ fontSize: '15px', fontWeight: 800 }}>Vídeos Finalizados ({videosPublicados.length})</h4>
+            </div>
+            <span className="badge badge-active">CONCLUÍDO</span>
+          </div>
+
+          {/* Player Ativo / Prévia */}
+          {activeEmbedVideo ? (
+            <div style={{ background: '#000', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
+              {getYoutubeEmbedId(activeEmbedVideo) ? (
+                <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0 }}>
+                  <iframe
+                    src={`https://www.youtube.com/embed/${getYoutubeEmbedId(activeEmbedVideo)}?autoplay=0&rel=0`}
+                    title="Player"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+                  />
+                </div>
+              ) : (
+                <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <Video size={36} style={{ margin: '0 auto 10px', opacity: 0.4, color: '#10b981' }} />
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{tituloDoJob(activeEmbedVideo)}</p>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Vídeo renderizado em alta definição 9:16</span>
+                </div>
+              )}
+
+              <div style={{ padding: '14px', background: 'var(--bg-input)', borderTop: '1px solid var(--border-subtle)' }}>
+                <h5 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {tituloDoJob(activeEmbedVideo) || 'Vídeo Concluído'}
+                </h5>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: 1.4 }}>
+                  "{activeEmbedVideo.script?.roteiro_locucao || 'Roteiro finalizado pela IA'}"
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <Video size={36} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
+              <p style={{ fontSize: '13px' }}>Selecione um vídeo finalizado abaixo para assistir</p>
+            </div>
+          )}
+
+          {/* Lista de Vídeos Concluídos */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto' }}>
+            {videosPublicados.map((job) => (
+              <div
+                key={job.id}
+                onClick={() => setActiveEmbedVideo(job)}
+                style={{
+                  background: activeEmbedVideo?.id === job.id ? 'rgba(16, 185, 129, 0.08)' : 'var(--bg-input)',
+                  border: `1px solid ${activeEmbedVideo?.id === job.id ? 'rgba(16, 185, 129, 0.35)' : 'var(--border-subtle)'}`,
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <div style={{ maxWidth: '75%' }}>
+                  <h5 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {tituloDoJob(job) || 'Vídeo sem título'}
+                  </h5>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    {job.createdAt ? new Date(job.createdAt).toLocaleTimeString() : 'Publicado'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button className="btn-secondary" style={{ padding: '5px 8px', fontSize: '11px' }}>
+                    <Play size={11} /> Ver
+                  </button>
+                  <button
+                    onClick={(e) => handleDeletarVideo(e, job.id)}
+                    className="btn-ghost"
+                    style={{ padding: '5px', color: 'var(--text-muted)' }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
       </div>
 
-      {/* Modal Unificado de Criação de Vídeo pela IA */}
       {showCriarModal && (
         <CriarVideoModal
           onClose={() => setShowCriarModal(false)}

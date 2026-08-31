@@ -2,19 +2,22 @@ import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import ChannelDetailModal from './ChannelDetailModal';
-import { Plus, Radio, Tag, Sparkles, Sliders, ArrowRight, Eye, Youtube, Share2, Layers } from 'lucide-react';
+import {
+  Plus, Radio, Tag, Sparkles, Sliders, ArrowRight, Eye, Youtube,
+  Share2, Layers, CheckCircle2, ChevronDown, ChevronUp, Mic, Globe
+} from 'lucide-react';
 
 export default function GerenciadorCanais() {
   const [canais, setCanais] = useState([]);
   const [selectedChannel, setSelectedChannel] = useState(null);
-  
-  // Campos do Formulário Completo de Canal
+  const [showNovoCanal, setShowNovoCanal] = useState(false);
+
+  // Formulário de Novo Canal
   const [nome, setNome] = useState('');
   const [nicho, setNicho] = useState('');
   const [publicoAlvo, setPublicoAlvo] = useState('Jovens e Adultos (18-35 anos)');
-  const [tomVoz, setTomVoz] = useState('pt-BR-AntonioNeural');
-  const [frequencia, setFrequencia] = useState('2');
-  const [promptIA, setPromptIA] = useState('Atue como um especialista em vídeos curtos e traga curiosidades impressionantes com um gancho forte nos primeiros 3 segundos.');
+  const [tomVoz, setTomVoz] = useState('pt-BR-FranciscaNeural');
+  const [promptIA, setPromptIA] = useState('Atue como um especialista em vídeos curtos virais com ganchos misteriosos.');
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
@@ -24,23 +27,21 @@ export default function GerenciadorCanais() {
     }, (error) => {
       console.warn('Erro Firestore listeners:', error.message);
       setCanais([
-        { 
-          id: 'tenant_test_1787011929715', 
-          name: 'Curiosidades Tech & IA', 
-          niche: 'Tecnologia, IA e Futuro', 
+        {
+          id: 'tenant_test_1787011929715',
+          name: 'Curiosidades Tech & IA',
+          niche: 'Tecnologia & Futuro',
           status: 'ACTIVE',
-          aiPrompt: 'Crie roteiros curtos sobre inteligência artificial e futuro com frases curtas e misteriosas.',
-          voiceTone: 'pt-BR-AntonioNeural',
-          dailyFrequency: '2'
+          aiPrompt: 'Crie roteiros curtos sobre inteligência artificial com ganchos dinâmicos.',
+          voiceTone: 'pt-BR-FranciscaNeural'
         },
-        { 
-          id: 'tenant_02', 
-          name: 'Mundo Obscuro', 
-          niche: 'Mistérios & História', 
+        {
+          id: 'tenant_02',
+          name: 'Mundo Obscuro',
+          niche: 'Mistérios & História',
           status: 'ACTIVE',
-          aiPrompt: 'Crie roteiros sobre fatos históricos misteriosos e não contados nas escolas.',
-          voiceTone: 'pt-BR-HumbertoNeural',
-          dailyFrequency: '1'
+          aiPrompt: 'Crie roteiros sobre fatos misteriosos da história.',
+          voiceTone: 'pt-BR-HumbertoNeural'
         }
       ]);
     });
@@ -59,11 +60,9 @@ export default function GerenciadorCanais() {
         niche: nicho.trim(),
         targetAudience: publicoAlvo,
         voiceTone: tomVoz,
-        dailyFrequency: frequencia,
         aiPrompt: promptIA.trim(),
         status: 'ACTIVE',
         language: 'pt-BR',
-        scheduling: { cronExpression: frequencia === '2' ? '0 12,18 * * *' : '0 12 * * *' },
         createdAt: new Date().toISOString()
       };
 
@@ -73,6 +72,7 @@ export default function GerenciadorCanais() {
       setNome('');
       setNicho('');
       setPromptIA('');
+      setShowNovoCanal(false);
     } catch (err) {
       alert(`Erro ao adicionar canal: ${err.message}`);
     } finally {
@@ -81,157 +81,240 @@ export default function GerenciadorCanais() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
       
-      {/* Formulário Avançado de Criação de Canal */}
-      <div className="glass-panel" style={{ padding: '28px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div>
-            <h3 style={{ fontSize: '19px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Plus className="text-accent" size={22} /> Configurar & Cadastrar Novo Canal Dark
-            </h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Defina as regras da IA, nicho e tom de voz que o motor autônomo usará para gerar os conteúdos.
-            </p>
-          </div>
+      {/* Top Banner de Métricas & Ação */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h3 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>
+            Canais Dark & Workspaces
+          </h3>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Gerencie identidades visuais, vozes e contas vinculadas para cada canal
+          </span>
         </div>
-        
-        <form onSubmit={handleSalvarCanal} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          <div className="grid-responsive-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-                Nome do Canal
-              </label>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Ex: Mistérios da Ciência"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                required
-              />
-            </div>
 
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-                Nicho Principal do Conteúdo
-              </label>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Ex: Ciência, Espaço e Física"
-                value={nicho}
-                onChange={(e) => setNicho(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-                Voz Neural Padrão (EdgeTTS)
-              </label>
-              <select
-                className="input-field"
-                value={tomVoz}
-                onChange={(e) => setTomVoz(e.target.value)}
-              >
-                <option value="pt-BR-AntonioNeural">pt-BR - Antonio (Masculina Impactante)</option>
-                <option value="pt-BR-FranciscaNeural">pt-BR - Francisca (Feminina Expressiva)</option>
-                <option value="pt-BR-YaraNeural">pt-BR - Yara (Feminina Suave)</option>
-                <option value="pt-BR-HumbertoNeural">pt-BR - Humberto (Masculina Grave)</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <Sparkles className="text-accent" size={16} /> Instrução / Prompt Personalizado da IA para este Canal
-            </label>
-            <textarea
-              className="input-field"
-              rows={3}
-              placeholder="Descreva a personalidade da IA, estilo dos ganchos e tom das piadas ou mistério..."
-              value={promptIA}
-              onChange={(e) => setPromptIA(e.target.value)}
-              required
-              style={{ fontFamily: 'inherit', lineHeight: '1.4' }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="submit" className="gradient-btn" disabled={salvando} style={{ height: '46px', padding: '0 24px' }}>
-              {salvando ? 'Cadastrando Canal...' : 'Criar Canal & Ativar Motor autônomo'}
-            </button>
-          </div>
-        </form>
+        <button
+          onClick={() => setShowNovoCanal(!showNovoCanal)}
+          className="gradient-btn"
+          style={{ padding: '10px 18px', fontSize: '13px' }}
+        >
+          {showNovoCanal ? <ChevronUp size={16} /> : <Plus size={16} />}
+          {showNovoCanal ? 'Recolher Formulário' : 'Cadastrar Novo Canal'}
+        </button>
       </div>
 
-      {/* Grid de Cards de Canais Interativos */}
-      <div className="glass-panel" style={{ padding: '28px' }}>
-        <h3 style={{ fontSize: '19px', fontWeight: 800, marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Radio className="text-accent" size={22} /> Canais Ativos no Sistema ({canais.length})
-        </h3>
-        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-          Clique em qualquer card abaixo para abrir a <strong>Sala de Controle do Canal</strong>, ver prévias dos vídeos gerados, prévia do áudio, métricas e alterar regras da IA.
-        </p>
+      {/* Formulário Retrátil de Novo Canal */}
+      {showNovoCanal && (
+        <div className="glass-panel tech-card" style={{ padding: '24px' }}>
+          <div style={{ marginBottom: '18px' }}>
+            <h4 style={{ fontSize: '16px', fontWeight: 800 }}>Novo Canal Autônomo</h4>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Defina as regras da IA e a voz neural que serão usadas nos vídeos deste canal
+            </span>
+          </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-          {canais.map((canal) => (
+          <form onSubmit={handleSalvarCanal} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                  Nome do Canal
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Ex: Mistérios do Universo"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                  Nicho Principal
+                </label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Ex: Curiosidades & Ciência"
+                  value={nicho}
+                  onChange={(e) => setNicho(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                  Voz Neural Padrão
+                </label>
+                <select
+                  className="input-field"
+                  value={tomVoz}
+                  onChange={(e) => setTomVoz(e.target.value)}
+                >
+                  <optgroup label="✨ ElevenLabs (Ultra-Realistas)">
+                    <option value="elevenlabs:pNInz6obpgDQGcFmaJgB">ElevenLabs - Adam (Masculina Profunda)</option>
+                    <option value="elevenlabs:21m00Tcm4TlvDq8ikWAM">ElevenLabs - Rachel (Feminina Narrativa)</option>
+                    <option value="elevenlabs:ErXwobaYiN019PkySvjV">ElevenLabs - Antoni (Masculina Jovem)</option>
+                    <option value="elevenlabs:EXAVITQu4vr4xnSDxMaL">ElevenLabs - Bella (Feminina Expressiva)</option>
+                  </optgroup>
+                  <optgroup label="⚡ EdgeTTS (Gratuitas)">
+                    <option value="pt-BR-FranciscaNeural">pt-BR - Francisca (Feminina Expressiva)</option>
+                    <option value="pt-BR-YaraNeural">pt-BR - Yara (Feminina Suave)</option>
+                    <option value="pt-BR-HumbertoNeural">pt-BR - Humberto (Masculina Grave)</option>
+                    <option value="pt-BR-FabioNeural">pt-BR - Fabio (Masculina)</option>
+                    <option value="pt-BR-AntonioNeural">pt-BR - Antonio (Masculina Padrão)</option>
+                  </optgroup>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <Sparkles size={13} className="text-accent" /> Prompt / Instrução da IA para este Canal
+              </label>
+              <textarea
+                className="input-field"
+                rows={2}
+                placeholder="Descreva a personalidade da IA, tom de fala e dinâmica dos roteiros..."
+                value={promptIA}
+                onChange={(e) => setPromptIA(e.target.value)}
+                required
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setShowNovoCanal(false)}
+                className="btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '12px' }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="gradient-btn"
+                disabled={salvando}
+                style={{ padding: '8px 20px', fontSize: '12px' }}
+              >
+                {salvando ? 'Salvando...' : 'Salvar Canal'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Grid Fluido de Cards de Canais */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+        {canais.map((canal) => {
+          const conexoes = canal.conexoes || {};
+          const hasYoutube = conexoes.youtube?.status === 'CONNECTED';
+          const hasTiktok = conexoes.tiktok?.status === 'CONNECTED';
+          const hasInstagram = conexoes.instagram?.status === 'CONNECTED';
+
+          return (
             <div
               key={canal.id}
               onClick={() => setSelectedChannel(canal)}
+              className="glass-panel"
               style={{
-                background: 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '16px',
-                padding: '20px',
+                padding: '22px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '14px',
+                gap: '16px',
                 cursor: 'pointer',
-                transition: 'all 0.25s ease',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                position: 'relative'
               }}
-              className="channel-card"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Header do Card */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '10px',
-                    background: 'linear-gradient(135deg, #00f2fe, #4facfe)',
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #10b981, #06b6d4)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontWeight: 800,
                     fontSize: '18px',
-                    color: '#000'
+                    color: '#06090c'
                   }}>
                     {(canal.name || canal.nome || 'C')[0]}
                   </div>
                   <div>
-                    <h4 style={{ fontSize: '16px', fontWeight: 700 }}>{canal.name || canal.nome}</h4>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{canal.niche || canal.nicho}</span>
+                    <h4 style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      {canal.name || canal.nome}
+                    </h4>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {canal.niche || canal.nicho}
+                    </span>
                   </div>
                 </div>
 
-                <span className="badge badge-active">AUTÔNOMO</span>
+                <span className="badge badge-active" style={{ fontSize: '10px' }}>ATIVO</span>
               </div>
 
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.3)', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                💬 "{canal.aiPrompt ? (canal.aiPrompt.substring(0, 70) + '...') : 'Configuração padrão ativada'}"
+              {/* Regra de IA Resumida */}
+              <div style={{
+                fontSize: '12px',
+                color: 'var(--text-secondary)',
+                background: 'var(--bg-input)',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-subtle)',
+                lineHeight: 1.4
+              }}>
+                💬 "{canal.aiPrompt ? (canal.aiPrompt.substring(0, 85) + '...') : 'Configuração padrão ativada'}"
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px solid var(--border-color)', fontSize: '12px', color: 'var(--accent-cyan)', fontWeight: 700 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Eye size={14} /> Acessar Workspace & Prévias
+              {/* Status de Redes Sociais Conectadas */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Redes:</span>
+                <span style={{
+                  fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px',
+                  background: hasYoutube ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255,255,255,0.03)',
+                  color: hasYoutube ? '#ef4444' : 'var(--text-muted)',
+                  border: hasYoutube ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border-subtle)'
+                }}>
+                  YouTube {hasYoutube ? '✓' : '—'}
                 </span>
-                <ArrowRight size={16} />
+                <span style={{
+                  fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px',
+                  background: hasTiktok ? 'rgba(6, 182, 212, 0.15)' : 'rgba(255,255,255,0.03)',
+                  color: hasTiktok ? '#06b6d4' : 'var(--text-muted)',
+                  border: hasTiktok ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid var(--border-subtle)'
+                }}>
+                  TikTok {hasTiktok ? '✓' : '—'}
+                </span>
+                <span style={{
+                  fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px',
+                  background: hasInstagram ? 'rgba(244, 114, 182, 0.15)' : 'rgba(255,255,255,0.03)',
+                  color: hasInstagram ? '#f472b6' : 'var(--text-muted)',
+                  border: hasInstagram ? '1px solid rgba(244, 114, 182, 0.3)' : '1px solid var(--border-subtle)'
+                }}>
+                  Instagram {hasInstagram ? '✓' : '—'}
+                </span>
+              </div>
+
+              {/* Botão de Entrada */}
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                paddingTop: '12px', borderTop: '1px solid var(--border-subtle)',
+                fontSize: '12px', color: '#10b981', fontWeight: 700
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Eye size={13} /> Abrir Sala de Controle
+                </span>
+                <ArrowRight size={15} />
               </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
       {/* Modal / Workspace do Canal Selecionado */}
