@@ -49,28 +49,28 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
   "mediaTypePreference": "google_image",
   "sections": [
     {
-      "text": "Frase curta que será falada pela voz sintetizada",
+      "text": "Frase que será falada pela voz sintetizada nesta cena",
       "imagePrompt": "Prompt em inglês descritivo para visual",
       "visualSearchQuery": "Termo de busca em inglês específico com o tema central para o Google Imagens (ex: 'GTA 6 Vice City screenshot')",
-      "durationEstSeconds": 3
+      "durationEstSeconds": 7
     }
   ],
   "soundMood": "Estilo da música de fundo (ex: 'energetic dark synthwave')",
   "hashtags": ["#shorts", "#viral"]
 }
 
-REGRAS DE CONTEÚDO E RITMO VISUAL:
-1. RITMO VISUAL DINÂMICO (CORTES A CADA 2 A 3 SEGUNDOS):
-   - OBRIGATÓRIO gerar entre 10 a 16 seções curtas ('sections') no array.
-   - Cada seção deve durar entre 2 a 3 segundos ('durationEstSeconds': 3) para criar uma esteira de cortes dinâmicos e frenéticos.
+REGRAS DE CONTEÚDO E ESTRUTURA:
+1. ESTRUTURA NARRATIVA (4 A 6 CENAS FLUIDAS):
+   - Crie entre 4 a 6 seções narrativas bem estruturadas ('sections').
+   - Cada seção deve conter uma parte completa da história/curiosidade (duração estimada de 6 a 8 segundos).
 2. FOCO EXCLUSIVO NO TÓPICO:
    - Fale ÚNICA E EXCLUSIVAMENTE sobre o assunto solicitado (${topic || 'o tópico informado'}).
-   - É EXTREMAMENTE PROIBIDO mencionar outros filmes, personagens ou franquias não relacionadas (NUNCA mencione 'Doutor Destino', 'Vingadores', 'Marvel' ou outros temas se o tópico for sobre 'GTA 6').
+   - É EXTREMAMENTE PROIBIDO mencionar outros filmes, personagens ou franquias não relacionadas.
 3. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
 4. A soma do texto falado em 'sections' deve formar uma narrativa contínua e empolgante.
 5. BUSCA DE IMAGENS NO GOOGLE (RIGOROSA E PRECISA):
    - 'mainVisualTheme' deve ser o nome oficial da franquia/pessoa/tópico em inglês.
-   - 'visualSearchQuery' DEVE OBRIGATORIAMENTE conter a entidade central e qualificadores descritivos reais em inglês para cada corte (ex: 'GTA 6 Lucia trailer', 'GTA 6 Jason police chase', 'GTA 6 neon skyline night').
+   - 'visualSearchQuery' DEVE OBRIGATORIAMENTE conter a entidade central e qualificadores descritivos reais em inglês (ex: 'GTA 6 Lucia trailer', 'GTA 6 Jason police chase', 'GTA 6 neon skyline night').
    - PROIBIDO usar queries genéricas ou em português.
 6. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
