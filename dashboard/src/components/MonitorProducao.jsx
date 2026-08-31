@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import CriarVideoQuickModal from './CriarVideoQuickModal';
-import PreviewImagensModal from './PreviewImagensModal';
+import CriarVideoModal from './CriarVideoModal';
 import { getProgressStage, isFailed } from '../lib/jobStatus';
 import {
   Video, Play, Pause, Youtube, Eye, Trash2, Layers, Cpu, CheckCircle2,
@@ -27,8 +26,7 @@ export default function MonitorProducao() {
   const [playingAudio, setPlayingAudio] = useState(null);
   const [audioRef, setAudioRef] = useState(null);
   const [deletandoJobId, setDeletandoJobId] = useState(null);
-  const [showQuickModal, setShowQuickModal] = useState(false);
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showCriarModal, setShowCriarModal] = useState(false);
   const [erroFirestore, setErroFirestore] = useState(null);
 
   // Escuta os Canais
@@ -188,27 +186,9 @@ export default function MonitorProducao() {
           </div>
 
           <button
-            onClick={() => setShowPreviewModal(true)}
-            className="btn-secondary"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 18px',
-              fontSize: '13px',
-              fontWeight: 700,
-              border: '1px solid rgba(0, 255, 135, 0.4)',
-              color: '#00ff87',
-              background: 'rgba(0, 255, 135, 0.08)'
-            }}
-          >
-            <ImageIcon size={18} /> Prévia de Imagens
-          </button>
-
-          <button
-            onClick={() => setShowQuickModal(true)}
+            onClick={() => setShowCriarModal(true)}
             className="gradient-btn"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '13px' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: 800 }}
           >
             <Plus size={18} /> Criar Novo Vídeo
           </button>
@@ -465,17 +445,10 @@ export default function MonitorProducao() {
 
       </div>
 
-      {/* Modal de Criação Rápida de Vídeo + */}
-      {showQuickModal && (
-        <CriarVideoQuickModal
-          onClose={() => setShowQuickModal(false)}
-        />
-      )}
-
-      {/* Modal de Prévia e Validação de Imagens da IA */}
-      {showPreviewModal && (
-        <PreviewImagensModal
-          onClose={() => setShowPreviewModal(false)}
+      {/* Modal Unificado de Criação de Vídeo pela IA */}
+      {showCriarModal && (
+        <CriarVideoModal
+          onClose={() => setShowCriarModal(false)}
           initialTenantId={selectedTenant !== 'ALL' ? selectedTenant : ''}
         />
       )}

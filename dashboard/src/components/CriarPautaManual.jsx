@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Sparkles, Layers, Film, CheckCircle2, Zap, Cpu, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import { triggerVideoJob } from '../lib/engineApi';
-import PreviewImagensModal from './PreviewImagensModal';
+import CriarVideoModal from './CriarVideoModal';
 
 export default function CriarPautaManual() {
   const [canais, setCanais] = useState([]);
@@ -230,7 +230,7 @@ export default function CriarPautaManual() {
       </div>
 
       {showPreview && (
-        <PreviewImagensModal
+        <CriarVideoModal
           onClose={() => setShowPreview(false)}
           initialTenantId={selectedTenant}
           initialTopic={tema}
