@@ -1,319 +1,139 @@
 import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
+import ffmpegPath from 'ffmpeg-static';
 import { promisify } from 'util';
 
-const execAsync = promisify(exec);
-
-const FORBIDDEN_WORDS_REGEX = /\b(anteriores|anterior|antigo|como|olha|veja|isso|quando|porque|sobre|mais|menos|detalhe|curiosidade|historia|evolucao|comparison|compare|previous|history|about|how|why|details|framework|flight|shoes|tenis|logo|banner|icon)\b/gi;
+const execFileAsync = promisify(execFile);
 
 /**
- * Normalizes query string for video search
+ * Returns the absolute path to the local yt-dlp binary, downloading it if missing.
  */
-function cleanQuery(str) {
-  return (str || '')
-    .replace(FORBIDDEN_WORDS_REGEX, '')
+export async function ensureYtDlpBinary() {
+  const binDir = path.resolve('bin');
+  await fs.ensureDir(binDir);
+
+  const isWin = process.platform === 'win32';
+  const binaryName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
+  const binaryPath = path.join(binDir, binaryName);
+
+  if (await fs.pathExists(binaryPath)) {
+    return binaryPath;
+  }
+
+  console.log(`[WebVideo] Baixando binário yt-dlp standalone para ${binaryPath}...`);
+  const downloadUrl = isWin
+    ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
+    : 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
+
+  const writer = fs.createWriteStream(binaryPath);
+  const response = await axios.get(downloadUrl, { responseType: 'stream' });
+  response.data.pipe(writer);
+
+  await new Promise((resolve, reject) => {
+    writer.on('finish', resolve);
+    writer.on('error', reject);
+  });
+
+  if (!isWin) {
+    await fs.chmod(binaryPath, '755');
+  }
+
+  console.log('[WebVideo] yt-dlp pronto para uso.');
+  return binaryPath;
+}
+
+/**
+ * Cleans the query into an effective video search keyword.
+ */
+function cleanVideoSearchQuery(query) {
+  if (!query) return '';
+  return query
     .replace(/[^\w\s-]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 /**
- * Searches Wikimedia Commons for public domain/creative commons video clips (MP4/WebM).
+ * Searches and downloads a real web video snippet (≤ 10s) for a specific scene,
+ * formatting it with FFmpeg into a vertical 1080x1920 (9:16) MP4 without audio.
+ *
+ * @param {Object} options
+ * @param {string} options.query Search terms (e.g. "Robert Downey Jr Doctor Doom Comic Con reveal")
+ * @param {number} [options.duration=8] Duration in seconds (max 10s)
+ * @param {string} options.outputPath Target vertical MP4 file path
+ * @param {number} [options.startOffset=5] Time offset in seconds to skip static intro logos
+ * @returns {Promise<string>} Output vertical MP4 path
  */
-async function searchWikimediaVideos(query, count = 4) {
-  const q = cleanQuery(query);
-  if (!q) return [];
-
-  try {
-    const url = 'https://commons.wikimedia.org/w/api.php';
-    const res = await axios.get(url, {
-      params: {
-        action: 'query',
-        format: 'json',
-        generator: 'search',
-        gsrsearch: `${q} filetype:video`,
-        gsrnamespace: 6,
-        gsrlimit: count,
-        prop: 'imageinfo',
-        iiprop: 'url|mime|thumburl',
-        iiurlwidth: 720
-      },
-      headers: { 'User-Agent': 'HermesContentFactory/2.0 (web-video-collector)' },
-      timeout: 8000
-    });
-
-    const pages = res.data?.query?.pages || {};
-    const videos = [];
-
-    for (const pageId of Object.keys(pages)) {
-      const info = pages[pageId]?.imageinfo?.[0];
-      if (info?.url && (info.url.endsWith('.mp4') || info.url.endsWith('.webm'))) {
-        videos.push({
-          id: `wiki_${pageId}`,
-          videoUrl: info.url,
-          thumbnailUrl: info.thumburl || info.url,
-          title: pages[pageId].title?.replace('File:', '') || q,
-          source: 'wikimedia'
-        });
-      }
-    }
-
-    return videos;
-  } catch (err) {
-    console.warn(`[WebVideo] Busca no Wikimedia falhou para "${query}": ${err.message}`);
-    return [];
-  }
-}
-
-/**
- * Searches Pixabay Video API for free open web HD/vertical video clips.
- */
-async function searchPixabayVideos(query, pixabayApiKey = null, count = 4) {
-  const q = cleanQuery(query);
-  if (!q) return [];
-
-  // If no Pixabay key provided, return empty
-  if (!pixabayApiKey) return [];
-
-  try {
-    const res = await axios.get('https://pixabay.com/api/videos/', {
-      params: {
-        key: pixabayApiKey,
-        q,
-        per_page: count,
-        safesearch: 'true'
-      },
-      timeout: 8000
-    });
-
-    const hits = res.data?.hits || [];
-    return hits.map(hit => {
-      const mediumVideo = hit.videos?.medium || hit.videos?.large || hit.videos?.small;
-      return {
-        id: `pixabay_${hit.id}`,
-        videoUrl: mediumVideo?.url,
-        thumbnailUrl: hit.userImageURL || `https://i.vimeocdn.com/video/${hit.picture_id}_640x360.jpg`,
-        duration: hit.duration,
-        title: hit.tags || q,
-        source: 'pixabay'
-      };
-    }).filter(v => Boolean(v.videoUrl));
-  } catch (err) {
-    console.warn(`[WebVideo] Busca no Pixabay falhou para "${query}": ${err.message}`);
-    return [];
-  }
-}
-
-/**
- * Checks if a stock video candidate is genuinely relevant to the specific search query.
- */
-function isRelevantStockVideo(v, q) {
-  if (!v) return false;
-  const qLower = q.toLowerCase();
-  const titleLower = (v.url || v.tags || v.user?.name || '').toLowerCase();
-  const words = qLower.split(/\s+/).filter(w => w.length > 3);
-
-  // If query is about specific pop culture, franchises, gaming or celebrities, stock footage is usually fake
-  const isSpecificEntity = /\b(avengers|marvel|doom|doomsday|gta|batman|superman|disney|iron man|robert downey|russo|spiderman|star wars|messi|cristiano|elon musk|naruto|anime|zelda|nintendo)\b/i.test(qLower);
-
-  if (isSpecificEntity) {
-    // Only accept if title/url contains at least one of the specific entity words
-    return words.some(w => titleLower.includes(w));
+export async function downloadRealWebVideoSnippet({
+  query,
+  duration = 8,
+  outputPath,
+  startOffset = 5
+}) {
+  const cleanQ = cleanVideoSearchQuery(query);
+  if (!cleanQ) {
+    throw new Error('Query vazia para busca de vídeo.');
   }
 
-  return true;
-}
+  const clipDuration = Math.min(Math.max(duration, 3), 10);
+  const ytDlpPath = await ensureYtDlpBinary();
+  const tempDir = path.join(path.dirname(outputPath), `temp_yt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+  await fs.ensureDir(tempDir);
 
-/**
- * Searches Pexels Videos API for vertical portrait video clips with strict relevance.
- */
-async function searchPexelsVideos(query, pexelsApiKey = null, count = 6) {
-  const q = cleanQuery(query);
-  if (!q || !pexelsApiKey) return [];
+  const rawDownloadTemplate = path.join(tempDir, 'raw_snippet.%(ext)s');
+  const startSec = Math.max(0, startOffset);
+  const endSec = startSec + clipDuration;
 
-  try {
-    const res = await axios.get('https://api.pexels.com/videos/search', {
-      headers: { Authorization: pexelsApiKey },
-      params: {
-        query: q,
-        per_page: count,
-        orientation: 'portrait'
-      },
-      timeout: 9000
-    });
+  // Search query with video intent
+  const searchQuery = `ytsearch1:${cleanQ} clip | trailer | scene`;
 
-    const videos = res.data?.videos || [];
-    return videos
-      .filter(v => isRelevantStockVideo(v, q))
-      .map(v => {
-        const portraitFiles = (v.video_files || [])
-          .filter(f => f.width && f.height && f.height > f.width)
-          .sort((a, b) => a.height - b.height);
-        const chosenFile = portraitFiles.find(f => f.height >= 1080) || portraitFiles[0] || v.video_files?.[0];
-
-        return {
-          id: `pexels_${v.id}`,
-          videoUrl: chosenFile?.link,
-          thumbnailUrl: v.image,
-          duration: v.duration,
-          title: q,
-          source: 'pexels'
-        };
-      })
-      .filter(v => Boolean(v.videoUrl));
-  } catch (err) {
-    console.warn(`[WebVideo] Busca no Pexels falhou para "${query}": ${err.message}`);
-    return [];
-  }
-}
-
-/**
- * Checks if the search query is about a specific franchise, movie, character, game, celebrity, or news event.
- * Stock video platforms (Pexels, Pixabay, Wikimedia) never have footage for these, returning fake generic actors instead.
- */
-export function isSpecificTopicOrEntity(query) {
-  if (!query) return false;
-  const q = query.toLowerCase();
-
-  const specificPatterns = [
-    /\b(avengers|marvel|mcu|doom|doomsday|iron\s*man|robert\s*downey|russo|thor|loki|captain\s*america|spider-?man|batman|superman|joker|star\s*wars|darth\s*vader|anime|naruto|goku|one\s*piece|attack\s*on\s*titan|death\s*note|demon\s*slayer|dragon\s*ball)\b/i,
-    /\b(gta|grand\s*theft\s*auto|minecraft|zelda|fortnite|playstation|xbox|nintendo|pokemon|cyberpunk|resident\s*evil|witcher|god\s*of\s*war|elden\s*ring)\b/i,
-    /\b(elon\s*musk|messi|cristiano|ronaldo|neymar|trump|biden|putin|bill\s*gates|steve\s*jobs|mark\s*zuckerberg|taylor\s*swift|mrbeast|pele|senna)\b/i,
-    /\b(iphone|samsung\s*galaxy|tesla|spacex|nasa|openai|chatgpt)\b/i,
-    /\b(filme|movie|trailer|ator|actor|actress|personagem|character|vil[aã]o|hero|heroi|comic|hq|serie|series)\b/i
+  const ytArgs = [
+    searchQuery,
+    '--download-sections', `*00:00:${String(startSec).padStart(2, '0')}-00:00:${String(endSec).padStart(2, '0')}`,
+    '--ffmpeg-location', path.dirname(ffmpegPath),
+    '-f', 'bv*[height<=720]+ba/b[height<=720]/best',
+    '-o', rawDownloadTemplate,
+    '--force-overwrites',
+    '--no-playlist',
+    '--no-warnings'
   ];
 
-  return specificPatterns.some(pattern => pattern.test(q));
-}
-
-/**
- * Searches real web video candidates from Web/Wikimedia/Pixabay/Pexels for a given scene query.
- *
- * @param {Object} options
- * @param {string} options.query Search terms
- * @param {string} [options.pexelsApiKey]
- * @param {string} [options.pixabayApiKey]
- * @param {number} [options.count=6]
- * @returns {Promise<Array<Object>>} List of candidate video objects
- */
-export async function searchWebVideoCandidates({
-  query,
-  pexelsApiKey = null,
-  pixabayApiKey = null,
-  count = 6
-}) {
-  const q = cleanQuery(query);
-  if (!q) return [];
-
-  // For specific franchises, games, celebrities, or movies, stock video sites return fake doctors/unrelated junk.
-  // We return [] so the pipeline immediately uses Google/Bing real 4K official web media + motion.
-  if (isSpecificTopicOrEntity(q)) {
-    return [];
-  }
-
-  const results = [];
-
-  // 1. First priority: Wikimedia Commons & Open Web Video Repositories
   try {
-    const wikiClips = await searchWikimediaVideos(q, 3);
-    results.push(...wikiClips);
-  } catch (e) {}
+    console.log(`[WebVideo] Buscando clipe de vídeo real no YouTube: "${searchQuery}" (${clipDuration}s)...`);
+    await execFileAsync(ytDlpPath, ytArgs, { timeout: 35000 });
 
-  // 2. Second priority: Pixabay Video
-  if (pixabayApiKey) {
-    try {
-      const pixabayClips = await searchPixabayVideos(q, pixabayApiKey, 3);
-      results.push(...pixabayClips);
-    } catch (e) {}
-  }
+    // Locate the downloaded raw file
+    const files = await fs.readdir(tempDir);
+    const downloadedRaw = files.find(f => f.startsWith('raw_snippet'));
 
-  // 3. Fallback: Pexels portrait videos
-  if (results.length < count && pexelsApiKey) {
-    try {
-      const pexelsClips = await searchPexelsVideos(q, pexelsApiKey, count - results.length);
-      results.push(...pexelsClips);
-    } catch (e) {}
-  }
+    if (!downloadedRaw) {
+      throw new Error(`Nenhum arquivo baixado pelo yt-dlp para "${cleanQ}".`);
+    }
 
-  return results.slice(0, count);
-}
+    const rawFilePath = path.join(tempDir, downloadedRaw);
 
-/**
- * Downloads a web video file and formats/trims it via FFmpeg into a 9:16 vertical MP4 (1080x1920).
- *
- * @param {Object} options
- * @param {string} options.videoUrl Direct URL of the video
- * @param {string} options.outputPath Local MP4 destination path
- * @param {number} [options.duration=6] Target duration in seconds (≤ 10s)
- * @returns {Promise<string>} Output local path
- */
-export async function downloadAndFormatWebVideo({
-  videoUrl,
-  outputPath,
-  duration = 6
-}) {
-  if (!videoUrl) {
-    throw new Error('URL de vídeo não fornecida.');
-  }
+    // Format with FFmpeg into crisp vertical 1080x1920 at 30fps
+    console.log(`[WebVideo] Formatando clipe para vertical 1080x1920 (9:16)...`);
+    const ffArgs = [
+      '-i', rawFilePath,
+      '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '23',
+      '-an',
+      '-t', String(clipDuration),
+      '-y',
+      outputPath
+    ];
 
-  await fs.ensureDir(path.dirname(outputPath));
-  const rawDownloadPath = `${outputPath}.raw.mp4`;
+    await execFileAsync(ffmpegPath, ffArgs, { timeout: 25000 });
+    console.log(`[WebVideo] Vídeo real da Web pronto: ${path.basename(outputPath)} (${clipDuration}s)`);
 
-  // 1. Download stream
-  const response = await axios({
-    method: 'get',
-    url: videoUrl,
-    responseType: 'stream',
-    timeout: 18000
-  });
-
-  await new Promise((resolve, reject) => {
-    const writer = fs.createWriteStream(rawDownloadPath);
-    let finished = false;
-
-    const timer = setTimeout(() => {
-      if (!finished) {
-        finished = true;
-        try { response.data.destroy(); } catch (e) {}
-        try { writer.destroy(); } catch (e) {}
-        fs.remove(rawDownloadPath).catch(() => {});
-        reject(new Error('Timeout excedido ao baixar vídeo da Web.'));
-      }
-    }, 20000);
-
-    writer.on('finish', () => {
-      if (!finished) {
-        finished = true;
-        clearTimeout(timer);
-        resolve();
-      }
-    });
-
-    writer.on('error', err => {
-      if (!finished) {
-        finished = true;
-        clearTimeout(timer);
-        fs.remove(rawDownloadPath).catch(() => {});
-        reject(err);
-      }
-    });
-
-    response.data.pipe(writer);
-  });
-
-  // 2. FFmpeg Format Pass: Scale & Crop to 1080x1920 (9:16 Vertical), Trim to duration (<=10s)
-  const maxDuration = Math.min(Math.max(duration, 2), 10);
-  const ffmpegCmd = `ffmpeg -i "${rawDownloadPath}" -t ${maxDuration} -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -an -y "${outputPath}"`;
-
-  try {
-    await execAsync(ffmpegCmd);
-    await fs.remove(rawDownloadPath).catch(() => {});
     return outputPath;
-  } catch (ffmpegErr) {
-    // Clean up temporary raw file
-    await fs.remove(rawDownloadPath).catch(() => {});
-    throw new Error(`Falha ao formatar vídeo da web com FFmpeg: ${ffmpegErr.message}`);
+  } finally {
+    // Cleanup temporary download folder
+    fs.remove(tempDir).catch(() => {});
   }
 }

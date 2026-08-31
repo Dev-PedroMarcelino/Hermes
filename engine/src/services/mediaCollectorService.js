@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { convertImageToMotionClip } from './aiImageService.js';
 import { fetchRealGoogleImage } from './googleImageService.js';
-import { searchWebVideoCandidates, downloadAndFormatWebVideo } from './webVideoService.js';
+import { downloadRealWebVideoSnippet } from './webVideoService.js';
 
 // Abstract words, transitional phrases or fillers that ruin image searches
 const FORBIDDEN_WORDS_REGEX = /\b(anteriores|anterior|antigo|como|olha|veja|isso|quando|porque|sobre|mais|menos|detalhe|curiosidade|historia|evolucao|comparison|compare|previous|history|about|how|why|details|framework|flight|shoes|tenis|logo|banner|icon)\b/gi;
@@ -196,33 +196,22 @@ export async function fetchStockVideos({
     const duration = Math.min(item.durationEstSeconds || 6, 10);
     let sceneClipPath = null;
 
-    // --- Strategy 1: Real Web Videos (Open Web / Wikimedia / Pixabay / Pexels ≤10s) ---
+    // --- Strategy 1: Real Web Videos via yt-dlp & Web Scraper (≤10s) ---
     if (preferWebVideos) {
       try {
-        console.log(`[MediaCollector] Buscando vídeo real curto na Web para cena ${index + 1}: "${concreteQuery}"`);
-        const candidates = await searchWebVideoCandidates({
+        console.log(`[MediaCollector] Buscando clipe de vídeo real da Web para cena ${index + 1}: "${concreteQuery}" (${duration}s)`);
+        const webClipPath = path.join(outputDirPath, `web_video_${index}.mp4`);
+        await downloadRealWebVideoSnippet({
           query: concreteQuery,
-          pexelsApiKey,
-          count: 5
+          duration,
+          outputPath: webClipPath
         });
 
-        const chosenCandidate = candidates.find(c => !usedVideoIds.has(c.id || c.videoUrl)) || candidates[0];
-
-        if (chosenCandidate?.videoUrl) {
-          usedVideoIds.add(chosenCandidate.id || chosenCandidate.videoUrl);
-          const webClipPath = path.join(outputDirPath, `web_video_${index}.mp4`);
-          await downloadAndFormatWebVideo({
-            videoUrl: chosenCandidate.videoUrl,
-            outputPath: webClipPath,
-            duration
-          });
-
-          sceneClipPath = webClipPath;
-          lastSuccessfulClip = webClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} pronta com VÍDEO REAL DA WEB: ${path.basename(webClipPath)}`);
-        }
+        sceneClipPath = webClipPath;
+        lastSuccessfulClip = webClipPath;
+        console.log(`[MediaCollector] Cena ${index + 1} pronta com VÍDEO REAL DA WEB (≤10s): ${path.basename(webClipPath)}`);
       } catch (webVideoErr) {
-        console.warn(`[MediaCollector] Falha ao coletar vídeo da web para cena ${index + 1} (${webVideoErr.message}). Tentando foto real...`);
+        console.warn(`[MediaCollector] Vídeo da web falhou para cena ${index + 1} (${webVideoErr.message}). Utilizando fotos reais em cortes rápidos de 2-3s...`);
       }
     }
 

@@ -19,7 +19,7 @@ export default function CriarVideoModal({
   const [selectedTenant, setSelectedTenant] = useState(initialTenantId || '');
   const [assunto, setAssunto] = useState(initialTopic || '');
   const [descricao, setDescricao] = useState(initialInstruction || '');
-  const [mediaPreference, setMediaPreference] = useState('google_image'); // google_image, web_video, ai_image, pexels
+  const [mediaPreference, setMediaPreference] = useState('web_video'); // web_video, google_image, ai_image
 
   // Configuração de Minissérie
   const [isMiniseries, setIsMiniseries] = useState(false);
@@ -298,9 +298,10 @@ export default function CriarVideoModal({
                 <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
                   Fonte das Imagens de Fundo:
                 </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
                   {[
-                    { id: 'google_image', label: '🌐 Web Real (Cortes de 2-3s)', icon: Globe },
+                    { id: 'web_video', label: '🌐 Vídeos & Fotos Web (Vídeos ≤10s + Fotos 2-3s)', icon: Film },
+                    { id: 'google_image', label: '📷 Apenas Fotos Reais Web (Cortes 2-3s)', icon: Globe },
                     { id: 'ai_image', label: '🎨 Arte IA (Flux 9:16)', icon: Palette }
                   ].map((mode) => {
                     const Icon = mode.icon;

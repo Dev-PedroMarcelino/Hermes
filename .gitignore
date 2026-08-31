@@ -29,3 +29,5 @@ Thumbs.db
 .next/
 dist/
 build/
+bin/
+engine/bin/
