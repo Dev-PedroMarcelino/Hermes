@@ -300,10 +300,8 @@ export default function CriarVideoModal({
                 </span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   {[
-                    { id: 'web_video', label: '🌐 Vídeos da Web (≤10s)', icon: Film },
-                    { id: 'google_image', label: '📷 Fotos Reais Web', icon: Globe },
-                    { id: 'ai_image', label: '🎨 Arte IA (Flux 9:16)', icon: Palette },
-                    { id: 'pexels', label: '🎬 Stock Pexels', icon: Sparkles }
+                    { id: 'google_image', label: '🌐 Web Real (Cortes de 2-3s)', icon: Globe },
+                    { id: 'ai_image', label: '🎨 Arte IA (Flux 9:16)', icon: Palette }
                   ].map((mode) => {
                     const Icon = mode.icon;
                     const isSelected = mediaPreference === mode.id;
@@ -395,11 +393,7 @@ export default function CriarVideoModal({
                   {carregandoPreview ? (
                     <>
                       <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                      Buscando Prévia de Cenas...
-                    </>
-                  ) : mediaPreference === 'web_video' || mediaPreference === 'pexels' ? (
-                    <>
-                      <Film size={16} /> Ver Prévia de Vídeos da Web
+                      Buscando Cenas da Web...
                     </>
                   ) : mediaPreference === 'ai_image' ? (
                     <>
@@ -407,7 +401,7 @@ export default function CriarVideoModal({
                     </>
                   ) : (
                     <>
-                      <Globe size={16} /> Ver Prévia de Fotos Reais
+                      <Globe size={16} /> Ver Prévia de Cenas da Web
                     </>
                   )}
                 </button>
@@ -526,7 +520,7 @@ export default function CriarVideoModal({
                           Cena {idx + 1} (~{scene.durationEstSeconds || 6}s)
                         </span>
                         <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                          {scene.source === 'web_video' || scene.isVideo ? '🌐 Vídeo Web (≤10s)' : scene.source === 'ai_image' ? '🎨 IA Flux' : scene.source === 'pexels' ? '🎬 Pexels' : '📷 Foto Real'}
+                          {scene.source === 'ai_image' ? '🎨 IA Flux (9:16)' : '🌐 Web Real (2-3s)'}
                         </span>
                       </div>
 

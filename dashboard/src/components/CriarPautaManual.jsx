@@ -170,12 +170,10 @@ export default function CriarPautaManual() {
               <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
                 <Film size={13} className="text-accent" /> Estilo das Mídias de Fundo
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
                 {[
-                  { id: 'web_video', label: '🌐 Vídeos da Web (≤10s)', desc: 'Clipes reais da internet' },
-                  { id: 'google_image', label: '📷 Fotos Reais Web', desc: 'Google Imagens + Motion' },
-                  { id: 'ai_image', label: '🎨 Arte IA (Flux 9:16)', desc: 'Ilustração cinematográfica' },
-                  { id: 'pexels', label: '🎬 Stock Pexels', desc: 'Apenas Natureza e Cidades' }
+                  { id: 'google_image', label: '🌐 Web Real (Cortes de 2-3s)', desc: '100% no tema + ritmo dinâmico' },
+                  { id: 'ai_image', label: '🎨 Arte IA (Flux 9:16)', desc: 'Ilustração cinematográfica' }
                 ].map(opt => {
                   const isSelected = mediaTypePreference === opt.id;
                   return (
@@ -284,17 +282,13 @@ export default function CriarPautaManual() {
                   borderColor: 'rgba(16, 185, 129, 0.3)'
                 }}
               >
-                {mediaTypePreference === 'web_video' || mediaTypePreference === 'pexels' ? (
-                  <>
-                    <Film size={16} /> Ver Prévia de Vídeos da Web
-                  </>
-                ) : mediaTypePreference === 'ai_image' ? (
+                {mediaTypePreference === 'ai_image' ? (
                   <>
                     <Sparkles size={16} /> Ver Prévia de Arte IA
                   </>
                 ) : (
                   <>
-                    <ImageIcon size={16} /> Ver Prévia de Fotos Reais
+                    <ImageIcon size={16} /> Ver Prévia de Cenas da Web
                   </>
                 )}
               </button>

@@ -227,67 +227,68 @@ export async function fetchStockVideos({
     }
 
     // --- Strategy 2: Direct Google / Bing Real Image Search (Vision Audited + Ken Burns Motion) ---
+    // Enforces fast dynamic cuts of 2.5 - 3.0s max per image
     if (!sceneClipPath) {
-      const searchAttempts = [
-        concreteQuery,
-        mainTheme || null
-      ].filter(Boolean);
+      const numSubCuts = duration > 3.2 ? Math.ceil(duration / 2.8) : 1;
+      const subDuration = duration / numSubCuts;
+      const subClips = [];
 
-      for (const queryToTry of searchAttempts) {
-        try {
-          console.log(`[MediaCollector] Buscando foto real no Google para cena ${index + 1}: "${queryToTry}"`);
-          const imgPath = path.join(outputDirPath, `scene_${index}_real.jpg`);
-          const videoClipPath = path.join(outputDirPath, `scene_${index}_motion.mp4`);
+      for (let subIdx = 0; subIdx < numSubCuts; subIdx++) {
+        const subQuery = subIdx === 0
+          ? concreteQuery
+          : `${mainTheme} ${subIdx % 2 === 0 ? 'closeup character action' : 'cinematic scene 4k'}`.trim();
 
-          await fetchRealGoogleImage({
-            query: queryToTry,
-            outputPath: imgPath,
-            usedUrls: usedImageUrls,
-            serperApiKey,
-            pexelsApiKey
-          });
+        const searchAttempts = [
+          subQuery,
+          concreteQuery,
+          mainTheme || null
+        ].filter(Boolean);
 
-          await convertImageToMotionClip({
-            imagePath: imgPath,
-            outputVideoPath: videoClipPath,
-            duration,
-            motionIndex: index
-          });
+        let subClipCreated = null;
 
-          sceneClipPath = videoClipPath;
-          lastSuccessfulClip = videoClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} pronta com foto REAL: ${path.basename(videoClipPath)}`);
-          break;
-        } catch (googleErr) {
-          console.warn(`[MediaCollector] Tentativa foto real para "${queryToTry}" falhou: ${googleErr.message}`);
+        for (const queryToTry of searchAttempts) {
+          try {
+            console.log(`[MediaCollector] Buscando foto real no Google para corte ${index + 1}.${subIdx + 1} (${subDuration.toFixed(1)}s): "${queryToTry}"`);
+            const imgPath = path.join(outputDirPath, `scene_${index}_sub_${subIdx}_real.jpg`);
+            const videoClipPath = path.join(outputDirPath, `scene_${index}_sub_${subIdx}_motion.mp4`);
+
+            await fetchRealGoogleImage({
+              query: queryToTry,
+              outputPath: imgPath,
+              usedUrls: usedImageUrls,
+              serperApiKey
+            });
+
+            await convertImageToMotionClip({
+              imagePath: imgPath,
+              outputVideoPath: videoClipPath,
+              duration: subDuration,
+              motionIndex: (index * 2) + subIdx
+            });
+
+            subClipCreated = videoClipPath;
+            lastSuccessfulClip = videoClipPath;
+            console.log(`[MediaCollector] Corte ${index + 1}.${subIdx + 1} pronto (${subDuration.toFixed(1)}s): ${path.basename(videoClipPath)}`);
+            break;
+          } catch (googleErr) {
+            console.warn(`[MediaCollector] Tentativa foto real para "${queryToTry}" falhou: ${googleErr.message}`);
+          }
         }
+
+        if (subClipCreated) {
+          subClips.push(subClipCreated);
+        } else if (lastSuccessfulClip) {
+          subClips.push(lastSuccessfulClip);
+        }
+      }
+
+      if (subClips.length > 0) {
+        downloadedFiles.push(...subClips);
+        continue;
       }
     }
 
-    // --- Strategy 3: Pexels Stock Video Fallback ---
-    if (!sceneClipPath && pexelsApiKey) {
-      try {
-        const { video, matchedQuery } = await searchPexelsCandidates({
-          query: concreteQuery,
-          mainVisualTheme,
-          pexelsApiKey,
-          usedVideoIds
-        });
-
-        if (video) {
-          usedVideoIds.add(video.id);
-          const pexelsClipPath = path.join(outputDirPath, `pexels_${index}_${video.id}.mp4`);
-          await downloadPexelsVideo({ video, filePath: pexelsClipPath, matchedQuery });
-          sceneClipPath = pexelsClipPath;
-          lastSuccessfulClip = pexelsClipPath;
-          console.log(`[MediaCollector] Cena ${index + 1} baixada do Pexels: "${concreteQuery}" → ${path.basename(pexelsClipPath)}`);
-        }
-      } catch (pexelsErr) {
-        console.error(`[MediaCollector] Falha no Pexels para cena ${index + 1}:`, pexelsErr.message);
-      }
-    }
-
-    // --- Strategy 4: Previous Scene Clip Fallback (Guarantees zero stall) ---
+    // --- Strategy 3: Previous Scene Clip Fallback (Guarantees zero stall) ---
     if (!sceneClipPath && lastSuccessfulClip) {
       sceneClipPath = lastSuccessfulClip;
       console.log(`[MediaCollector] Cena ${index + 1} utilizando clipe da cena anterior.`);

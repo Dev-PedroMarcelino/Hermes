@@ -32,7 +32,7 @@ export async function generateVideoScript({
 
   const prompt = `
 Você é um roteirista profissional de conteúdo viral para redes sociais curtas (YouTube Shorts, TikTok, Instagram Reels).
-Crie um roteiro de vídeo curto de ALTA RETENÇÃO (duração total ideal entre 30 a 50 segundos).
+Crie um roteiro de vídeo curto de ALTA RETENÇÃO (duração total ideal entre 30 a 50 segundos) com CORTES RÁPIDOS E DINÂMICOS A CADA 2 A 3 SEGUNDOS.
 
 - Nicho do Canal: ${niche}
 - Identidade da Marca: ${brandIdentity}
@@ -49,28 +49,30 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
   "mediaTypePreference": "google_image",
   "sections": [
     {
-      "text": "Texto exato que será falado pela voz sintetizada",
+      "text": "Frase curta que será falada pela voz sintetizada",
       "imagePrompt": "Prompt em inglês descritivo para visual",
-      "visualSearchQuery": "Termo de busca natural e direto em inglês com o tema central para o Google Imagens (ex para GTA 6: 'GTA 6 Vice City screenshot')",
-      "durationEstSeconds": 6
+      "visualSearchQuery": "Termo de busca em inglês específico com o tema central para o Google Imagens (ex: 'GTA 6 Vice City screenshot')",
+      "durationEstSeconds": 3
     }
   ],
   "soundMood": "Estilo da música de fundo (ex: 'energetic dark synthwave')",
   "hashtags": ["#shorts", "#viral"]
 }
 
-REGRAS DE CONTEÚDO E VISUAIS:
-1. FOCO EXCLUSIVO NO TÓPICO:
+REGRAS DE CONTEÚDO E RITMO VISUAL:
+1. RITMO VISUAL DINÂMICO (CORTES A CADA 2 A 3 SEGUNDOS):
+   - OBRIGATÓRIO gerar entre 10 a 16 seções curtas ('sections') no array.
+   - Cada seção deve durar entre 2 a 3 segundos ('durationEstSeconds': 3) para criar uma esteira de cortes dinâmicos e frenéticos.
+2. FOCO EXCLUSIVO NO TÓPICO:
    - Fale ÚNICA E EXCLUSIVAMENTE sobre o assunto solicitado (${topic || 'o tópico informado'}).
    - É EXTREMAMENTE PROIBIDO mencionar outros filmes, personagens ou franquias não relacionadas (NUNCA mencione 'Doutor Destino', 'Vingadores', 'Marvel' ou outros temas se o tópico for sobre 'GTA 6').
-2. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
-3. A soma do texto falado em 'sections' deve formar uma narrativa fluida.
-4. BUSCA DE IMAGENS NO GOOGLE (RIGOROSA E PRECISA):
+3. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
+4. A soma do texto falado em 'sections' deve formar uma narrativa contínua e empolgante.
+5. BUSCA DE IMAGENS NO GOOGLE (RIGOROSA E PRECISA):
    - 'mainVisualTheme' deve ser o nome oficial da franquia/pessoa/tópico em inglês.
-   - 'visualSearchQuery' DEVE OBRIGATORIAMENTE conter a entidade central e qualificadores descritivos reais em inglês (ex: 'GTA 6 Vice City screenshot', 'GTA 6 Lucia Jason vehicle').
-   - PROIBIDO usar queries genéricas ou dependentes apenas do substantivo comum (NUNCA pesquise apenas 'map', 'car', 'city', 'gameplay'; SEMPRE inclua o nome oficial completo da entidade principal).
-   - PROIBIDO usar palavras em português nas buscas.
-5. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
+   - 'visualSearchQuery' DEVE OBRIGATORIAMENTE conter a entidade central e qualificadores descritivos reais em inglês para cada corte (ex: 'GTA 6 Lucia trailer', 'GTA 6 Jason police chase', 'GTA 6 neon skyline night').
+   - PROIBIDO usar queries genéricas ou em português.
+6. Retorne APENAS o JSON válido. Sem formatação markdown extra fora do JSON.
 `;
 
   let result;

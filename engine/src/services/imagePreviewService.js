@@ -4,7 +4,6 @@ import { config } from '../config/env.js';
 import { decryptCredential } from './vaultService.js';
 import { generateVideoScript } from './geminiService.js';
 import { searchRealGoogleImageCandidates } from './googleImageService.js';
-import { searchWebVideoCandidates } from './webVideoService.js';
 
 const FORBIDDEN_WORDS_REGEX = /\b(anteriores|anterior|antigo|como|olha|veja|isso|quando|porque|sobre|mais|menos|detalhe|curiosidade|historia|evolucao|comparison|compare|previous|history|about|how|why|details|framework|flight|shoes|tenis|logo|banner|icon)\b/gi;
 
@@ -41,27 +40,6 @@ function buildConcreteSceneQuery(mainTheme = '', sceneQuery = '', sceneIndex = 0
 }
 
 /**
- * Queries Pexels Photo API for high-resolution vertical portrait photos.
- */
-async function searchPexelsPhotos({ query, pexelsApiKey, count = 6 }) {
-  if (!pexelsApiKey || !query) return [];
-  try {
-    const res = await axios.get('https://api.pexels.com/v1/search', {
-      headers: { Authorization: pexelsApiKey },
-      params: { query, per_page: count, orientation: 'portrait' },
-      timeout: 7000
-    });
-    const photos = res.data?.photos || [];
-    return photos
-      .map(p => p.src?.large2x || p.src?.large || p.src?.portrait || p.src?.original)
-      .filter(Boolean);
-  } catch (err) {
-    console.warn(`[ImagePreview] Pexels photos falhou para "${query}": ${err.message}`);
-    return [];
-  }
-}
-
-/**
  * Generates Pollinations AI image preview URLs with varied seeds and models (Flux / Turbo).
  */
 function generatePollinationsUrls(prompt, count = 4) {
@@ -79,20 +57,20 @@ function generatePollinationsUrls(prompt, count = 4) {
 }
 
 /**
- * Generates structured video scenes with Gemini and brings visual choices for each scene.
+ * Generates structured video scenes with Gemini and brings visual choices for each scene (fast 2-3s cuts).
  *
  * @param {Object} options
  * @param {string} options.tenantId Channel ID
  * @param {string} [options.topic] Theme/Subject
  * @param {string} [options.instruction] Direct operator instructions
- * @param {string} [options.mediaPreference='web_video'] 'web_video' | 'google_image' | 'ai_image' | 'pexels' | 'auto'
- * @returns {Promise<Object>} Video overview and scenes with images/videos
+ * @param {string} [options.mediaPreference='google_image'] 'google_image' | 'ai_image'
+ * @returns {Promise<Object>} Video overview and scenes with images
  */
 export async function generateImagePreview({
   tenantId,
   topic = null,
   instruction = null,
-  mediaPreference = 'web_video'
+  mediaPreference = 'google_image'
 }) {
   const tenantRef = db.collection('tenants').doc(tenantId);
   const tenantSnap = await tenantRef.get();
@@ -104,7 +82,6 @@ export async function generateImagePreview({
 
   // Resolve API Keys from tenant vault
   let geminiKey = config.geminiApiKey;
-  let pexelsKey = config.pexelsApiKey;
   let serperKey = config.serperApiKey;
 
   try {
@@ -112,7 +89,6 @@ export async function generateImagePreview({
     if (vaultSnap.exists) {
       const vaultData = vaultSnap.data();
       geminiKey = decryptCredential(vaultData.geminiApiKey) || geminiKey;
-      pexelsKey = decryptCredential(vaultData.pexelsApiKey) || pexelsKey;
       serperKey = decryptCredential(vaultData.serperApiKey) || serperKey;
     }
   } catch (err) {
@@ -123,7 +99,7 @@ export async function generateImagePreview({
     throw new Error('Chave da API do Google Gemini não encontrada.');
   }
 
-  // 1. Generate Structured Script with Gemini
+  // 1. Generate Structured Script with Gemini (2-3s fast visual cuts)
   const scriptJson = await generateVideoScript({
     apiKey: geminiKey,
     niche: tenantData.niche || 'Geral',
@@ -137,9 +113,9 @@ export async function generateImagePreview({
 
   const sections = Array.isArray(scriptJson.sections) && scriptJson.sections.length > 0
     ? scriptJson.sections
-    : [{ text: scriptJson.hook, visualSearchQuery: mainVisualTheme, imagePrompt: mainVisualTheme, durationEstSeconds: 6 }];
+    : [{ text: scriptJson.hook, visualSearchQuery: mainVisualTheme, imagePrompt: mainVisualTheme, durationEstSeconds: 3 }];
 
-  // 2. Fetch media candidates for each scene concurrently
+  // 2. Fetch media candidates for each fast scene concurrently
   const scenes = await Promise.all(
     sections.map(async (section, index) => {
       const rawQuery = section.visualSearchQuery || section.imagePrompt || mainVisualTheme;
@@ -147,89 +123,29 @@ export async function generateImagePreview({
       const aiPrompt = section.imagePrompt || concreteQuery;
 
       let candidateUrls = [];
-      let videoUrl = null;
-      let detectedSource = mediaPreference;
+      let detectedSource = mediaPreference === 'ai_image' ? 'ai_image' : 'google_image';
 
-      if (mediaPreference === 'web_video' || mediaPreference === 'stock_video') {
-        const videoCandidates = await searchWebVideoCandidates({
-          query: concreteQuery,
-          pexelsApiKey: pexelsKey,
-          count: 5
-        });
-
-        if (videoCandidates.length > 0) {
-          videoUrl = videoCandidates[0].videoUrl;
-          candidateUrls = videoCandidates.map(v => v.thumbnailUrl || v.videoUrl).filter(Boolean);
-          detectedSource = 'web_video';
-        } else {
-          // Fallback to real web photos
-          candidateUrls = await searchRealGoogleImageCandidates({
-            query: concreteQuery,
-            maxResults: 6,
-            serperApiKey: serperKey,
-            pexelsApiKey: pexelsKey
-          });
-          detectedSource = 'google_image';
-        }
-      } else if (mediaPreference === 'ai_image') {
+      if (mediaPreference === 'ai_image') {
         candidateUrls = generatePollinationsUrls(aiPrompt, 4);
-        detectedSource = 'ai_image';
-      } else if (mediaPreference === 'pexels') {
-        candidateUrls = await searchPexelsPhotos({ query: concreteQuery, pexelsApiKey: pexelsKey, count: 6 });
-        if (candidateUrls.length === 0) {
-          candidateUrls = await searchRealGoogleImageCandidates({
-            query: concreteQuery,
-            maxResults: 6,
-            serperApiKey: serperKey,
-            pexelsApiKey: pexelsKey
-          });
-          detectedSource = 'google_image';
-        } else {
-          detectedSource = 'pexels';
-        }
-      } else if (mediaPreference === 'google_image') {
+      } else {
+        // Default & Web Real: Google / Bing 4K images
         candidateUrls = await searchRealGoogleImageCandidates({
           query: concreteQuery,
           maxResults: 6,
-          serperApiKey: serperKey,
-          pexelsApiKey: pexelsKey
+          serperApiKey: serperKey
         });
+
         if (candidateUrls.length === 0) {
-          // Fallback to main theme search
           candidateUrls = await searchRealGoogleImageCandidates({
             query: mainVisualTheme,
             maxResults: 6,
-            serperApiKey: serperKey,
-            pexelsApiKey: pexelsKey
+            serperApiKey: serperKey
           });
         }
+
         if (candidateUrls.length === 0) {
-          // Fallback to AI generation
           candidateUrls = generatePollinationsUrls(aiPrompt, 3);
           detectedSource = 'ai_image';
-        } else {
-          detectedSource = 'google_image';
-        }
-      } else {
-        // 'auto' mode: Prioritize real web video, then Google photo, then AI
-        const videoCandidates = await searchWebVideoCandidates({
-          query: concreteQuery,
-          pexelsApiKey: pexelsKey,
-          count: 3
-        });
-
-        if (videoCandidates.length > 0) {
-          videoUrl = videoCandidates[0].videoUrl;
-          candidateUrls = videoCandidates.map(v => v.thumbnailUrl || v.videoUrl).filter(Boolean);
-          detectedSource = 'web_video';
-        } else {
-          candidateUrls = await searchRealGoogleImageCandidates({
-            query: concreteQuery,
-            maxResults: 5,
-            serperApiKey: serperKey,
-            pexelsApiKey: pexelsKey
-          });
-          detectedSource = 'google_image';
         }
       }
 
@@ -238,12 +154,12 @@ export async function generateImagePreview({
       return {
         sceneIndex: index,
         text: section.text || '',
-        durationEstSeconds: section.durationEstSeconds || 6,
+        durationEstSeconds: section.durationEstSeconds || 3,
         visualSearchQuery: concreteQuery,
         imagePrompt: aiPrompt,
         imageUrl: defaultImage,
-        videoUrl: videoUrl || null,
-        isVideo: Boolean(videoUrl),
+        videoUrl: null,
+        isVideo: false,
         alternativeUrls: candidateUrls.slice(1),
         source: detectedSource
       };
@@ -263,21 +179,13 @@ export async function generateImagePreview({
 
 /**
  * Searches / regenerates media candidates for a single scene on the fly.
- *
- * @param {Object} options
- * @param {string} options.query Search query
- * @param {string} [options.prompt] AI generation prompt
- * @param {string} [options.source='web_video'] 'web_video' | 'google_image' | 'ai_image' | 'pexels'
- * @param {string} [options.tenantId]
- * @returns {Promise<Object>} Candidates array and active image/video
  */
 export async function searchSingleSceneImages({
   query = '',
   prompt = '',
-  source = 'web_video',
+  source = 'google_image',
   tenantId = null
 }) {
-  let pexelsKey = config.pexelsApiKey;
   let serperKey = config.serperApiKey;
 
   if (tenantId) {
@@ -285,7 +193,6 @@ export async function searchSingleSceneImages({
       const vaultSnap = await db.collection('tenants').doc(tenantId).collection('credentials').doc('vault').get();
       if (vaultSnap.exists) {
         const vaultData = vaultSnap.data();
-        pexelsKey = decryptCredential(vaultData.pexelsApiKey) || pexelsKey;
         serperKey = decryptCredential(vaultData.serperApiKey) || serperKey;
       }
     } catch (e) {}
@@ -293,45 +200,16 @@ export async function searchSingleSceneImages({
 
   const cleanQuery = (query || prompt || '').trim();
   let candidates = [];
-  let videoUrl = null;
 
-  if (source === 'web_video' || source === 'stock_video') {
-    const videoCandidates = await searchWebVideoCandidates({
-      query: cleanQuery,
-      pexelsApiKey: pexelsKey,
-      count: 6
-    });
-    if (videoCandidates.length > 0) {
-      videoUrl = videoCandidates[0].videoUrl;
-      candidates = videoCandidates.map(v => v.thumbnailUrl || v.videoUrl).filter(Boolean);
-    } else {
-      candidates = await searchRealGoogleImageCandidates({
-        query: cleanQuery,
-        maxResults: 6,
-        serperApiKey: serperKey,
-        pexelsApiKey: pexelsKey
-      });
-    }
-  } else if (source === 'ai_image') {
+  if (source === 'ai_image') {
     candidates = generatePollinationsUrls(prompt || cleanQuery, 5);
-  } else if (source === 'pexels') {
-    candidates = await searchPexelsPhotos({ query: cleanQuery, pexelsApiKey: pexelsKey, count: 6 });
-    if (candidates.length === 0) {
-      candidates = await searchRealGoogleImageCandidates({
-        query: cleanQuery,
-        maxResults: 6,
-        serperApiKey: serperKey,
-        pexelsApiKey: pexelsKey
-      });
-    }
   } else {
-    // google_image default
     candidates = await searchRealGoogleImageCandidates({
       query: cleanQuery,
       maxResults: 8,
-      serperApiKey: serperKey,
-      pexelsApiKey: pexelsKey
+      serperApiKey: serperKey
     });
+
     if (candidates.length === 0) {
       candidates = generatePollinationsUrls(prompt || cleanQuery, 4);
     }
@@ -340,10 +218,10 @@ export async function searchSingleSceneImages({
   return {
     query: cleanQuery,
     prompt: prompt || cleanQuery,
-    source,
+    source: source === 'ai_image' ? 'ai_image' : 'google_image',
     imageUrl: candidates[0] || null,
-    videoUrl: videoUrl || null,
-    isVideo: Boolean(videoUrl),
+    videoUrl: null,
+    isVideo: false,
     alternativeUrls: candidates.slice(1)
   };
 }
