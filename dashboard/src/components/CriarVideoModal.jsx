@@ -19,7 +19,7 @@ export default function CriarVideoModal({
   const [selectedTenant, setSelectedTenant] = useState(initialTenantId || '');
   const [assunto, setAssunto] = useState(initialTopic || '');
   const [descricao, setDescricao] = useState(initialInstruction || '');
-  const [mediaPreference, setMediaPreference] = useState('auto'); // auto, google_image, ai_image, pexels
+  const [mediaPreference, setMediaPreference] = useState('web_video'); // web_video, google_image, ai_image, pexels
 
   // Configuração de Minissérie
   const [isMiniseries, setIsMiniseries] = useState(false);
@@ -146,14 +146,16 @@ export default function CriarVideoModal({
           await triggerVideoJob({
             tenantId: selectedTenant,
             customTopic: assunto.trim(),
-            customInstruction: serieInstruction
+            customInstruction: serieInstruction,
+            mediaTypePreference: mediaPreference
           });
         }
       } else {
         await triggerVideoJob({
           tenantId: selectedTenant,
           customTopic: assunto.trim(),
-          customInstruction: descricao.trim() || null
+          customInstruction: descricao.trim() || null,
+          mediaTypePreference: mediaPreference
         });
       }
 
@@ -298,10 +300,10 @@ export default function CriarVideoModal({
                 </span>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   {[
-                    { id: 'auto', label: '⚡ Automático', icon: Sparkles },
-                    { id: 'google_image', label: '🌐 Web Real', icon: Globe },
+                    { id: 'web_video', label: '🌐 Vídeos da Web (≤10s)', icon: Film },
+                    { id: 'google_image', label: '📷 Fotos Reais Web', icon: Globe },
                     { id: 'ai_image', label: '🎨 Arte IA (Flux)', icon: Palette },
-                    { id: 'pexels', label: '🎬 Stock Pexels', icon: Film }
+                    { id: 'pexels', label: '🎬 Stock Pexels', icon: Sparkles }
                   ].map((mode) => {
                     const Icon = mode.icon;
                     const isSelected = mediaPreference === mode.id;
@@ -516,7 +518,7 @@ export default function CriarVideoModal({
                           Cena {idx + 1} (~{scene.durationEstSeconds || 6}s)
                         </span>
                         <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                          {scene.source === 'ai_image' ? '🎨 IA Flux' : scene.source === 'pexels' ? '🎬 Pexels' : '🌐 Web Real'}
+                          {scene.source === 'web_video' || scene.isVideo ? '🌐 Vídeo Web (≤10s)' : scene.source === 'ai_image' ? '🎨 IA Flux' : scene.source === 'pexels' ? '🎬 Pexels' : '📷 Foto Real'}
                         </span>
                       </div>
 

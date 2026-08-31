@@ -20,6 +20,8 @@ export default function ChannelDetailModal({ channel, onClose }) {
 
   const [aiPrompt, setAiPrompt] = useState(channel.aiPrompt || 'Atue como um roteirista sênior especialista em vídeos curtos virais.');
   const [voiceTone, setVoiceTone] = useState(channel.voiceTone || 'pt-BR-AntonioNeural');
+  const [customElevenVoiceId, setCustomElevenVoiceId] = useState('');
+  const [mediaPreference, setMediaPreference] = useState(channel.mediaPreference || channel.contentConfig?.mediaTypePreference || 'web_video');
   const [targetDuration, setTargetDuration] = useState(channel.targetDuration || '60s');
   const [salvandoConfig, setSalvandoConfig] = useState(false);
   const [sucessoConfig, setSucessoConfig] = useState(false);
@@ -146,6 +148,8 @@ export default function ChannelDetailModal({ channel, onClose }) {
           voiceTone: finalVoiceTone,
           'contentConfig.voiceId': finalVoiceTone,
           'contentConfig.ttsProvider': finalVoiceTone.startsWith('elevenlabs:') ? 'elevenlabs' : 'edge',
+          'contentConfig.mediaTypePreference': mediaPreference,
+          mediaPreference,
           targetDuration,
           updatedAt: new Date().toISOString()
         });
@@ -629,6 +633,22 @@ export default function ChannelDetailModal({ channel, onClose }) {
                       onChange={(e) => setCustomElevenVoiceId(e.target.value)}
                     />
                   )}
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '6px' }}>
+                    Estilo de Mídia de Fundo Padrão
+                  </label>
+                  <select
+                    className="input-field"
+                    value={mediaPreference}
+                    onChange={(e) => setMediaPreference(e.target.value)}
+                  >
+                    <option value="web_video">🌐 Vídeos Curtos da Web (≤10s - Recomendado)</option>
+                    <option value="google_image">📷 Fotos Reais Web (Google / Bing)</option>
+                    <option value="ai_image">🎨 Arte IA (Flux 9:16)</option>
+                    <option value="pexels">🎬 Stock Pexels</option>
+                  </select>
                 </div>
 
                 <div>

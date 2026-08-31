@@ -156,10 +156,13 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
 
     const mainVisualTheme = scriptJson.mainVisualTheme || (customTopic ? `${customTopic} stock background` : '');
 
+    const chosenMediaPreference = jobData.mediaTypePreference || tenantData.mediaPreference || tenantData.contentConfig?.mediaTypePreference || scriptJson.mediaTypePreference || 'web_video';
+    console.log(`[Pipeline] Preferência de mídia selecionada: '${chosenMediaPreference}'`);
+
     const downloadedClips = await fetchStockVideos({
       sections: scriptJson.sections || [],
       mainVisualTheme,
-      mediaTypePreference: scriptJson.mediaTypePreference || 'google_image',
+      mediaTypePreference: chosenMediaPreference,
       outputDirPath: workDir,
       pexelsApiKey: pexelsKey,
       geminiApiKey: geminiKey,

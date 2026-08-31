@@ -66,12 +66,13 @@ export async function getEngineHealth() {
  * Queues a real production job.
  * @returns {Promise<{jobId: string, status: string}>}
  */
-export async function triggerVideoJob({ tenantId, customTopic, customInstruction }) {
+export async function triggerVideoJob({ tenantId, customTopic, customInstruction, mediaTypePreference = 'web_video' }) {
   try {
     const { data } = await client.post('/api/jobs/trigger', {
       tenantId,
       customTopic: customTopic || null,
-      customInstruction: customInstruction || null
+      customInstruction: customInstruction || null,
+      mediaTypePreference: mediaTypePreference || 'web_video'
     });
     return data;
   } catch (error) {

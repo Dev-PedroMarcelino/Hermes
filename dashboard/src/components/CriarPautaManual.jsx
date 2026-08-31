@@ -13,6 +13,7 @@ export default function CriarPautaManual() {
   const [selectedTenant, setSelectedTenant] = useState('');
   const [tema, setTema] = useState('');
   const [descricao, setDescricao] = useState('');
+  const [mediaTypePreference, setMediaTypePreference] = useState('web_video');
   const [isMiniseries, setIsMiniseries] = useState(false);
   const [quantidadePartes, setQuantidadePartes] = useState('3');
   const [salvando, setSalvando] = useState(false);
@@ -63,7 +64,8 @@ export default function CriarPautaManual() {
           await triggerVideoJob({
             tenantId: selectedTenant,
             customTopic: tema.trim(),
-            customInstruction: instruction
+            customInstruction: instruction,
+            mediaTypePreference
           });
         }
 
@@ -72,7 +74,8 @@ export default function CriarPautaManual() {
         const { jobId } = await triggerVideoJob({
           tenantId: selectedTenant,
           customTopic: tema.trim(),
-          customInstruction: descricao.trim() || null
+          customInstruction: descricao.trim() || null,
+          mediaTypePreference
         });
         setSucessoMsg(`Job ${jobId} enfileirado com sucesso! Acompanhe no Monitor.`);
       }
@@ -160,6 +163,43 @@ export default function CriarPautaManual() {
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
               />
+            </div>
+
+            {/* Seletor de Estilo de Mídia de Fundo */}
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <Film size={13} className="text-accent" /> Estilo das Mídias de Fundo
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+                {[
+                  { id: 'web_video', label: '🌐 Vídeos da Web (≤10s)', desc: 'Clipes reais da internet' },
+                  { id: 'google_image', label: '📷 Fotos Reais Web', desc: 'Google Imagens + Motion' },
+                  { id: 'ai_image', label: '🎨 Arte IA (Flux)', desc: 'Gerada por IA em 9:16' },
+                  { id: 'pexels', label: '🎬 Stock Pexels', desc: 'Acervo de banco Pexels' }
+                ].map(opt => {
+                  const isSelected = mediaTypePreference === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setMediaTypePreference(opt.id)}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-input)',
+                        border: `1px solid ${isSelected ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)'}`,
+                        color: isSelected ? '#10b981' : 'var(--text-secondary)',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ fontSize: '12px', fontWeight: 700 }}>{opt.label}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{opt.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Painel de Minissérie */}

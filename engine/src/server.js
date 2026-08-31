@@ -130,7 +130,7 @@ app.get('/public/videos/:jobId/:token', requireFirestore, async (req, res) => {
  * dashboard follows progress through the Firestore document in real time.
  */
 app.post('/api/jobs/trigger', requireFirestore, requireAuth, async (req, res) => {
-  const { tenantId, customTopic, customInstruction } = req.body;
+  const { tenantId, customTopic, customInstruction, mediaTypePreference } = req.body;
   if (!tenantId) return res.status(400).json({ error: 'O campo tenantId é obrigatório.' });
 
   try {
@@ -147,6 +147,7 @@ app.post('/api/jobs/trigger', requireFirestore, requireAuth, async (req, res) =>
       status: JOB_STATUS.QUEUED,
       customTopic: customTopic || null,
       customInstruction: customInstruction || null,
+      mediaTypePreference: mediaTypePreference || 'web_video',
       triggerType: req.headers['user-agent']?.includes('n8n') ? 'CRON' : 'MANUAL',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()

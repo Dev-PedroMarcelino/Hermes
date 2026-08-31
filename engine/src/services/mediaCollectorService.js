@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { convertImageToMotionClip } from './aiImageService.js';
 import { fetchRealGoogleImage } from './googleImageService.js';
+import { searchWebVideoCandidates, downloadAndFormatWebVideo } from './webVideoService.js';
 
 // Abstract words, transitional phrases or fillers that ruin image searches
 const FORBIDDEN_WORDS_REGEX = /\b(anteriores|anterior|antigo|como|olha|veja|isso|quando|porque|sobre|mais|menos|detalhe|curiosidade|historia|evolucao|comparison|compare|previous|history|about|how|why|details|framework|flight|shoes|tenis|logo|banner|icon)\b/gi;
@@ -29,7 +30,7 @@ function buildConcreteSceneQuery(mainTheme = '', sceneQuery = '', sceneIndex = 0
   }
 
   // Fallback to structured per-scene visual angles
-  const theme = cleanMain || 'GTA 6';
+  const theme = cleanMain || 'Technology';
   const defaultAngles = [
     theme,
     `${theme} main characters`,
@@ -150,14 +151,14 @@ async function downloadPexelsVideo({ video, filePath, matchedQuery }) {
 }
 
 /**
- * Real Web Image Media Collector:
- * Fast, robust collection of 100% REAL photos directly from Google / Bing image search.
+ * Real Media Collector:
+ * Collects real web videos (≤10s) or real web photos with Ken Burns motion.
  *
  * @param {Object} options
  * @param {Array<Object>} [options.sections] Script sections with text, visualSearchQuery
  * @param {Array<string>} [options.queries] Legacy fallback query strings
  * @param {string} [options.mainVisualTheme] Core theme keywords for fallback search
- * @param {string} [options.mediaTypePreference='google_image'] 'google_image' or 'stock_video'
+ * @param {string} [options.mediaTypePreference='web_video'] 'web_video' | 'stock_video' | 'google_image'
  * @param {string} options.outputDirPath Directory to save the MP4s
  * @param {string} options.pexelsApiKey
  * @returns {Promise<Array<string>>} Local paths of the generated 9:16 MP4 video clips
@@ -166,7 +167,7 @@ export async function fetchStockVideos({
   sections = [],
   queries = [],
   mainVisualTheme = '',
-  mediaTypePreference = 'google_image',
+  mediaTypePreference = 'web_video',
   outputDirPath,
   pexelsApiKey,
   geminiApiKey = null,
@@ -184,17 +185,49 @@ export async function fetchStockVideos({
   const usedImageUrls = new Set();
   let lastSuccessfulClip = null;
 
+  const preferWebVideos = mediaTypePreference === 'web_video' || mediaTypePreference === 'stock_video';
+
   for (const [index, item] of items.entries()) {
     const rawVisualQuery = (item.visualSearchQuery || '').trim();
     const mainTheme = (mainVisualTheme || '').trim();
 
     // Clean, concrete query anchored to the topic
     const concreteQuery = buildConcreteSceneQuery(mainTheme, rawVisualQuery, index);
-    const duration = item.durationEstSeconds || 6;
+    const duration = Math.min(item.durationEstSeconds || 6, 10);
     let sceneClipPath = null;
 
-    // --- Strategy 1: Direct Google / Bing Real Image Search (Vision Audited) ---
-    if (mediaTypePreference !== 'stock_video') {
+    // --- Strategy 1: Real Web Videos (Open Web / Wikimedia / Pixabay / Pexels ≤10s) ---
+    if (preferWebVideos) {
+      try {
+        console.log(`[MediaCollector] Buscando vídeo real curto na Web para cena ${index + 1}: "${concreteQuery}"`);
+        const candidates = await searchWebVideoCandidates({
+          query: concreteQuery,
+          pexelsApiKey,
+          count: 5
+        });
+
+        const chosenCandidate = candidates.find(c => !usedVideoIds.has(c.id || c.videoUrl)) || candidates[0];
+
+        if (chosenCandidate?.videoUrl) {
+          usedVideoIds.add(chosenCandidate.id || chosenCandidate.videoUrl);
+          const webClipPath = path.join(outputDirPath, `web_video_${index}.mp4`);
+          await downloadAndFormatWebVideo({
+            videoUrl: chosenCandidate.videoUrl,
+            outputPath: webClipPath,
+            duration
+          });
+
+          sceneClipPath = webClipPath;
+          lastSuccessfulClip = webClipPath;
+          console.log(`[MediaCollector] Cena ${index + 1} pronta com VÍDEO REAL DA WEB: ${path.basename(webClipPath)}`);
+        }
+      } catch (webVideoErr) {
+        console.warn(`[MediaCollector] Falha ao coletar vídeo da web para cena ${index + 1} (${webVideoErr.message}). Tentando foto real...`);
+      }
+    }
+
+    // --- Strategy 2: Direct Google / Bing Real Image Search (Vision Audited + Ken Burns Motion) ---
+    if (!sceneClipPath) {
       const searchAttempts = [
         concreteQuery,
         mainTheme || null
@@ -226,12 +259,12 @@ export async function fetchStockVideos({
           console.log(`[MediaCollector] Cena ${index + 1} pronta com foto REAL: ${path.basename(videoClipPath)}`);
           break;
         } catch (googleErr) {
-          console.warn(`[MediaCollector] Tentativa para "${queryToTry}" falhou: ${googleErr.message}`);
+          console.warn(`[MediaCollector] Tentativa foto real para "${queryToTry}" falhou: ${googleErr.message}`);
         }
       }
     }
 
-    // --- Strategy 2: Pexels Stock Video Fallback ---
+    // --- Strategy 3: Pexels Stock Video Fallback ---
     if (!sceneClipPath && pexelsApiKey) {
       try {
         const { video, matchedQuery } = await searchPexelsCandidates({
@@ -254,7 +287,7 @@ export async function fetchStockVideos({
       }
     }
 
-    // --- Strategy 3: Previous Scene Clip Fallback (Guarantees zero stall) ---
+    // --- Strategy 4: Previous Scene Clip Fallback (Guarantees zero stall) ---
     if (!sceneClipPath && lastSuccessfulClip) {
       sceneClipPath = lastSuccessfulClip;
       console.log(`[MediaCollector] Cena ${index + 1} utilizando clipe da cena anterior.`);
