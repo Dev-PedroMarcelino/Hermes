@@ -19,7 +19,7 @@ export default function CriarVideoModal({
   const [selectedTenant, setSelectedTenant] = useState(initialTenantId || '');
   const [assunto, setAssunto] = useState(initialTopic || '');
   const [descricao, setDescricao] = useState(initialInstruction || '');
-  const [mediaPreference, setMediaPreference] = useState('web_video'); // web_video, google_image, ai_image, pexels
+  const [mediaPreference, setMediaPreference] = useState('google_image'); // google_image, web_video, ai_image, pexels
 
   // Configuração de Minissérie
   const [isMiniseries, setIsMiniseries] = useState(false);

@@ -107,7 +107,27 @@ async function searchPixabayVideos(query, pixabayApiKey = null, count = 4) {
 }
 
 /**
- * Searches Pexels Videos API for vertical portrait video clips.
+ * Checks if a stock video candidate is genuinely relevant to the specific search query.
+ */
+function isRelevantStockVideo(v, q) {
+  if (!v) return false;
+  const qLower = q.toLowerCase();
+  const titleLower = (v.url || v.tags || v.user?.name || '').toLowerCase();
+  const words = qLower.split(/\s+/).filter(w => w.length > 3);
+
+  // If query is about specific pop culture, franchises, gaming or celebrities, stock footage is usually fake
+  const isSpecificEntity = /\b(avengers|marvel|doom|doomsday|gta|batman|superman|disney|iron man|robert downey|russo|spiderman|star wars|messi|cristiano|elon musk|naruto|anime|zelda|nintendo)\b/i.test(qLower);
+
+  if (isSpecificEntity) {
+    // Only accept if title/url contains at least one of the specific entity words
+    return words.some(w => titleLower.includes(w));
+  }
+
+  return true;
+}
+
+/**
+ * Searches Pexels Videos API for vertical portrait video clips with strict relevance.
  */
 async function searchPexelsVideos(query, pexelsApiKey = null, count = 6) {
   const q = cleanQuery(query);
@@ -125,21 +145,24 @@ async function searchPexelsVideos(query, pexelsApiKey = null, count = 6) {
     });
 
     const videos = res.data?.videos || [];
-    return videos.map(v => {
-      const portraitFiles = (v.video_files || [])
-        .filter(f => f.width && f.height && f.height > f.width)
-        .sort((a, b) => a.height - b.height);
-      const chosenFile = portraitFiles.find(f => f.height >= 1080) || portraitFiles[0] || v.video_files?.[0];
+    return videos
+      .filter(v => isRelevantStockVideo(v, q))
+      .map(v => {
+        const portraitFiles = (v.video_files || [])
+          .filter(f => f.width && f.height && f.height > f.width)
+          .sort((a, b) => a.height - b.height);
+        const chosenFile = portraitFiles.find(f => f.height >= 1080) || portraitFiles[0] || v.video_files?.[0];
 
-      return {
-        id: `pexels_${v.id}`,
-        videoUrl: chosenFile?.link,
-        thumbnailUrl: v.image,
-        duration: v.duration,
-        title: q,
-        source: 'pexels'
-      };
-    }).filter(v => Boolean(v.videoUrl));
+        return {
+          id: `pexels_${v.id}`,
+          videoUrl: chosenFile?.link,
+          thumbnailUrl: v.image,
+          duration: v.duration,
+          title: q,
+          source: 'pexels'
+        };
+      })
+      .filter(v => Boolean(v.videoUrl));
   } catch (err) {
     console.warn(`[WebVideo] Busca no Pexels falhou para "${query}": ${err.message}`);
     return [];

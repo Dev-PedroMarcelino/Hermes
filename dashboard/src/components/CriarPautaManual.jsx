@@ -13,7 +13,7 @@ export default function CriarPautaManual() {
   const [selectedTenant, setSelectedTenant] = useState('');
   const [tema, setTema] = useState('');
   const [descricao, setDescricao] = useState('');
-  const [mediaTypePreference, setMediaTypePreference] = useState('web_video');
+  const [mediaTypePreference, setMediaTypePreference] = useState('google_image');
   const [isMiniseries, setIsMiniseries] = useState(false);
   const [quantidadePartes, setQuantidadePartes] = useState('3');
   const [salvando, setSalvando] = useState(false);
