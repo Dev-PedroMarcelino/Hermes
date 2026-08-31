@@ -71,7 +71,7 @@ export async function generateImagePreview({
   tenantId,
   topic = null,
   instruction = null,
-  mediaPreference = 'google_image'
+  mediaPreference = 'web_video'
 }) {
   const tenantRef = db.collection('tenants').doc(tenantId);
   const tenantSnap = await tenantRef.get();
@@ -116,7 +116,7 @@ export async function generateImagePreview({
     ? scriptJson.sections
     : [{ text: scriptJson.hook, visualSearchQuery: mainVisualTheme, imagePrompt: mainVisualTheme, durationEstSeconds: 3 }];
 
-  // 2. Fetch media candidates (Videos & Images) for each scene concurrently
+  // 2. Fetch media candidates (Hybrid Videos & Images) for each scene concurrently
   const preferWebVideos = mediaPreference === 'web_video';
 
   const scenes = await Promise.all(
@@ -124,6 +124,9 @@ export async function generateImagePreview({
       const rawQuery = section.visualSearchQuery || section.imagePrompt || mainVisualTheme;
       const concreteQuery = buildConcreteSceneQuery(mainVisualTheme, rawQuery, index);
       const aiPrompt = section.imagePrompt || concreteQuery;
+
+      // Determine scene target media: respect section.mediaType or alternate for dynamic hybrid rhythm
+      const shouldBeVideo = preferWebVideos && (section.mediaType ? section.mediaType === 'video' : (index === 0 || index % 2 === 0));
 
       let candidateUrls = [];
       let videoInfo = null;
@@ -135,7 +138,7 @@ export async function generateImagePreview({
       } else {
         // Concurrently search Web Video metadata and Google 4K images
         const [videoResults, googleImages] = await Promise.all([
-          preferWebVideos ? searchWebVideoMetadata(concreteQuery, 2).catch(() => []) : Promise.resolve([]),
+          shouldBeVideo ? searchWebVideoMetadata(concreteQuery, 2).catch(() => []) : Promise.resolve([]),
           searchRealGoogleImageCandidates({
             query: concreteQuery,
             maxResults: 6,
@@ -152,7 +155,7 @@ export async function generateImagePreview({
           }).catch(() => []);
         }
 
-        if (videoResults.length > 0) {
+        if (shouldBeVideo && videoResults.length > 0) {
           videoInfo = videoResults[0];
           detectedSource = 'web_video';
           candidateUrls = [videoInfo.thumbnailUrl, ...resolvedImages].filter(Boolean);
@@ -163,11 +166,21 @@ export async function generateImagePreview({
       }
 
       const defaultImage = candidateUrls[0] || generatePollinationsUrls(aiPrompt, 1)[0];
+      const isVideoScene = Boolean(videoInfo);
+
+      // For image scenes, build subCuts showing the 2 to 3 photos that alternate every 2.5s
+      const subCuts = !isVideoScene && candidateUrls.length > 1
+        ? candidateUrls.slice(0, 3).map((url, cutIdx) => ({
+            cutIndex: cutIdx + 1,
+            url,
+            durationEstSeconds: 2.5
+          }))
+        : [];
 
       return {
         sceneIndex: index,
         text: section.text || '',
-        durationEstSeconds: section.durationEstSeconds || (videoInfo ? 8 : 3),
+        durationEstSeconds: section.durationEstSeconds || (isVideoScene ? 8 : 6),
         visualSearchQuery: concreteQuery,
         imagePrompt: aiPrompt,
         imageUrl: defaultImage,
@@ -175,7 +188,8 @@ export async function generateImagePreview({
         embedUrl: videoInfo?.embedUrl || null,
         youtubeId: videoInfo?.id || null,
         videoTitle: videoInfo?.title || null,
-        isVideo: Boolean(videoInfo),
+        isVideo: isVideoScene,
+        subCuts,
         alternativeUrls: candidateUrls.slice(1),
         source: detectedSource
       };

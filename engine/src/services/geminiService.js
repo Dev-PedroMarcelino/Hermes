@@ -45,13 +45,14 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 {
   "title": "Título chamativo do vídeo",
   "hook": "Frase de impacto inicial dos primeiros 3 segundos para prender a atenção",
-  "mainVisualTheme": "Nome oficial do TEMA PRINCIPAL em inglês para pesquisar no Google Imagens (ex: se o tópico for GTA 6 -> 'GTA 6')",
-  "mediaTypePreference": "google_image",
+  "mainVisualTheme": "Nome oficial do TEMA PRINCIPAL em inglês para pesquisar na Web (ex: se o tópico for GTA 6 -> 'GTA 6')",
+  "mediaTypePreference": "web_video",
   "sections": [
     {
       "text": "Frase que será falada pela voz sintetizada nesta cena",
       "imagePrompt": "Prompt em inglês descritivo para visual",
-      "visualSearchQuery": "Termo de busca em inglês específico com o tema central para o Google Imagens (ex: 'GTA 6 Vice City screenshot')",
+      "visualSearchQuery": "Termo de busca em inglês específico com o tema central (ex: 'GTA 6 Vice City trailer' ou 'GTA 6 Lucia action')",
+      "mediaType": "video",
       "durationEstSeconds": 7
     }
   ],
@@ -60,15 +61,16 @@ RETORNE ESTRITAMENTE UM JSON NO SEGUINTE FORMATO JSON SCHEMA:
 }
 
 REGRAS DE CONTEÚDO E ESTRUTURA:
-1. ESTRUTURA NARRATIVA (4 A 6 CENAS FLUIDAS):
+1. ESTRUTURA NARRATIVA HÍBRIDA (4 A 6 CENAS):
    - Crie entre 4 a 6 seções narrativas bem estruturadas ('sections').
-   - Cada seção deve conter uma parte completa da história/curiosidade (duração estimada de 6 a 8 segundos).
+   - INTERCALE INTELIGENTEMENTE o campo 'mediaType': use 'video' para momentos de impacto/ação/revelação (≤10s) e 'image' para contextualização e detalhes rápidos (fotos com cortes de 2-3s).
+   - O gancho (Cena 1) e o clímax (Cena 4 ou 5) devem preferencialmente ser 'video'. As demais cenas podem ser 'image'.
 2. FOCO EXCLUSIVO NO TÓPICO:
    - Fale ÚNICA E EXCLUSIVAMENTE sobre o assunto solicitado (${topic || 'o tópico informado'}).
    - É EXTREMAMENTE PROIBIDO mencionar outros filmes, personagens ou franquias não relacionadas.
 3. O campo 'hook' deve ser extremamente forte nos primeiros 3 segundos.
 4. A soma do texto falado em 'sections' deve formar uma narrativa contínua e empolgante.
-5. BUSCA DE IMAGENS NO GOOGLE (RIGOROSA E PRECISA):
+5. BUSCA DE MÍDIA NA WEB (RIGOROSA E PRECISA):
    - 'mainVisualTheme' deve ser o nome oficial da franquia/pessoa/tópico em inglês.
    - 'visualSearchQuery' DEVE OBRIGATORIAMENTE conter a entidade central e qualificadores descritivos reais em inglês (ex: 'GTA 6 Lucia trailer', 'GTA 6 Jason police chase', 'GTA 6 neon skyline night').
    - PROIBIDO usar queries genéricas ou em português.

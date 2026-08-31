@@ -520,13 +520,21 @@ export default function CriarVideoModal({
                         <span style={{ fontSize: '11px', fontWeight: 800, color: '#00ff87', background: 'rgba(0, 255, 135, 0.1)', padding: '3px 6px', borderRadius: '4px' }}>
                           Cena {idx + 1} (~{scene.durationEstSeconds || 6}s)
                         </span>
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                          {scene.source === 'ai_image' ? '🎨 IA Flux (9:16)' : '🌐 Web Real (2-3s)'}
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          background: scene.isVideo ? 'rgba(16, 185, 129, 0.2)' : 'rgba(59, 130, 246, 0.2)',
+                          color: scene.isVideo ? '#10b981' : '#60a5fa',
+                          border: `1px solid ${scene.isVideo ? 'rgba(16, 185, 129, 0.4)' : 'rgba(59, 130, 246, 0.4)'}`
+                        }}>
+                          {scene.isVideo ? '🎬 Vídeo Real (≤10s)' : scene.source === 'ai_image' ? '🎨 IA Flux' : '📷 Fotos Reais (Cortes 2-3s)'}
                         </span>
                       </div>
 
                       {/* Imagem / Video de Capa da Cena */}
-                      <div style={{ position: 'relative', width: '100%', height: '240px', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#000' }}>
+                      <div style={{ position: 'relative', width: '100%', height: '220px', borderRadius: '10px', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#000' }}>
                         {currentImgUrl ? (
                           <img
                             src={getProxyImageUrl(currentImgUrl)}
@@ -569,7 +577,7 @@ export default function CriarVideoModal({
                               className="btn-secondary"
                               style={{ padding: '4px 8px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
                             >
-                              <ZoomIn size={11} /> Ampliar
+                              <ZoomIn size={11} /> Ampliar Foto
                             </button>
                           )}
 
@@ -578,6 +586,32 @@ export default function CriarVideoModal({
                           </a>
                         </div>
                       </div>
+
+                      {/* Informações da Cena */}
+                      {scene.isVideo && scene.videoTitle && (
+                        <div style={{ fontSize: '10px', color: '#10b981', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          🎬 Clipe: {scene.videoTitle}
+                        </div>
+                      )}
+
+                      {/* Cortes Rápidos de Fotos (2-3s) para Cenas de Imagem */}
+                      {!scene.isVideo && scene.subCuts && scene.subCuts.length > 0 && (
+                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                            ⚡ Cortes Rápidos desta Cena (troca a cada 2.5s):
+                          </span>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            {scene.subCuts.map((cut, cutIdx) => (
+                              <div key={cutIdx} style={{ position: 'relative', width: '48px', height: '64px', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                                <img src={getProxyImageUrl(cut.url)} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <span style={{ position: 'absolute', bottom: '2px', left: '2px', fontSize: '8px', background: 'rgba(0,0,0,0.75)', color: '#00ff87', padding: '1px 3px', borderRadius: '2px', fontWeight: 800 }}>
+                                  ~{cut.durationEstSeconds}s
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       <div style={{ fontSize: '11px', color: 'var(--text-primary)', lineHeight: '1.4', background: 'rgba(255,255,255,0.02)', padding: '6px 8px', borderRadius: '6px', borderLeft: '2px solid #00ff87' }}>
                         "{scene.text}"
