@@ -16,6 +16,15 @@ import { getAppCredentialsStatus, saveAppCredentials } from '../lib/engineApi';
 
 const NETWORKS = [
   {
+    key: 'elevenlabs',
+    label: 'ElevenLabs (Vozes Ultra-Realistas)',
+    fields: [
+      { name: 'elevenlabsApiKey', label: 'API Key', placeholder: 'sk_... ou xi-api-key' }
+    ],
+    console: 'elevenlabs.io → Profile → API Keys',
+    quotaNote: 'Permite que este canal use vozes hiper-realistas da ElevenLabs com sua própria cota.'
+  },
+  {
     key: 'youtube',
     label: 'YouTube',
     fields: [

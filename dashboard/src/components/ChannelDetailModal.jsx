@@ -136,10 +136,14 @@ export default function ChannelDetailModal({ channel, onClose }) {
     e.preventDefault();
     setSalvandoConfig(true);
     try {
+      const finalVoiceTone = voiceTone === 'elevenlabs:custom' && customElevenVoiceId.trim()
+        ? `elevenlabs:${customElevenVoiceId.trim()}`
+        : voiceTone;
+
       if (db && channel.id) {
         await updateDoc(doc(db, 'tenants', channel.id), {
           aiPrompt,
-          voiceTone,
+          voiceTone: finalVoiceTone,
           targetDuration,
           updatedAt: new Date().toISOString()
         });
@@ -591,18 +595,44 @@ export default function ChannelDetailModal({ channel, onClose }) {
               <div className="grid-responsive-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                    <Mic size={14} className="text-accent" /> Tom de Voz Neural (EdgeTTS)
+                    <Mic size={14} className="text-accent" /> Tom de Voz (EdgeTTS ou ElevenLabs)
                   </label>
                   <select
                     className="input-field"
-                    value={voiceTone}
+                    value={voiceTone.startsWith('elevenlabs:') && !['elevenlabs:pNInz6obpgDQGcFmaJgB', 'elevenlabs:21m00Tcm4TlvDq8ikWAM', 'elevenlabs:ErXwobaYiN019PkySvjV', 'elevenlabs:EXAVITQu4vr4xnSDxMaL', 'elevenlabs:TxGEqnHWrfWFTfGW9XjX', 'elevenlabs:AZnzlk1XvdvUeBnXmlld'].includes(voiceTone) ? 'elevenlabs:custom' : voiceTone}
                     onChange={(e) => setVoiceTone(e.target.value)}
                   >
-                    <option value="pt-BR-AntonioNeural">pt-BR - Antonio (Masculina Impactante)</option>
-                    <option value="pt-BR-FranciscaNeural">pt-BR - Francisca (Feminina Expressiva)</option>
-                    <option value="pt-BR-YaraNeural">pt-BR - Yara (Feminina Suave)</option>
-                    <option value="pt-BR-HumbertoNeural">pt-BR - Humberto (Masculina Grave)</option>
+                    <optgroup label="✨ ElevenLabs (Vozes Ultra-Realistas)">
+                      <option value="elevenlabs:pNInz6obpgDQGcFmaJgB">ElevenLabs - Adam (Masculina Profunda)</option>
+                      <option value="elevenlabs:21m00Tcm4TlvDq8ikWAM">ElevenLabs - Rachel (Feminina Narrativa)</option>
+                      <option value="elevenlabs:ErXwobaYiN019PkySvjV">ElevenLabs - Antoni (Masculina Jovem)</option>
+                      <option value="elevenlabs:EXAVITQu4vr4xnSDxMaL">ElevenLabs - Bella (Feminina Expressiva)</option>
+                      <option value="elevenlabs:TxGEqnHWrfWFTfGW9XjX">ElevenLabs - Josh (Masculina Dinâmica)</option>
+                      <option value="elevenlabs:AZnzlk1XvdvUeBnXmlld">ElevenLabs - Domi (Feminina Forte)</option>
+                      <option value="elevenlabs:custom">ElevenLabs - Customizada (Digitar ID de Voz Clonada)</option>
+                    </optgroup>
+                    <optgroup label="⚡ EdgeTTS (Vozes Gratuitas)">
+                      <option value="pt-BR-FranciscaNeural">pt-BR - Francisca (Feminina Expressiva)</option>
+                      <option value="pt-BR-YaraNeural">pt-BR - Yara (Feminina Suave / História)</option>
+                      <option value="pt-BR-HumbertoNeural">pt-BR - Humberto (Masculina Grave)</option>
+                      <option value="pt-BR-FabioNeural">pt-BR - Fabio (Masculina)</option>
+                      <option value="pt-BR-JulioNeural">pt-BR - Julio (Masculina)</option>
+                      <option value="pt-BR-LeylaNeural">pt-BR - Leyla (Feminina)</option>
+                      <option value="pt-BR-RebecaNeural">pt-BR - Rebeca (Feminina)</option>
+                      <option value="pt-BR-AntonioNeural">pt-BR - Antonio (Masculina Padrão)</option>
+                    </optgroup>
                   </select>
+
+                  {(voiceTone === 'elevenlabs:custom' || (voiceTone.startsWith('elevenlabs:') && !['elevenlabs:pNInz6obpgDQGcFmaJgB', 'elevenlabs:21m00Tcm4TlvDq8ikWAM', 'elevenlabs:ErXwobaYiN019PkySvjV', 'elevenlabs:EXAVITQu4vr4xnSDxMaL', 'elevenlabs:TxGEqnHWrfWFTfGW9XjX', 'elevenlabs:AZnzlk1XvdvUeBnXmlld'].includes(voiceTone))) && (
+                    <input
+                      type="text"
+                      className="input-field"
+                      style={{ marginTop: '8px' }}
+                      placeholder="Insira o Voice ID da ElevenLabs (Ex: 21m00Tcm4TlvDq8ikWAM)"
+                      value={customElevenVoiceId}
+                      onChange={(e) => setCustomElevenVoiceId(e.target.value)}
+                    />
+                  )}
                 </div>
 
                 <div>

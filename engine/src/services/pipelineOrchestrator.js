@@ -97,6 +97,7 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
     const geminiKey = decryptCredential(vaultData.geminiApiKey) || config.geminiApiKey;
     const pexelsKey = decryptCredential(vaultData.pexelsApiKey) || config.pexelsApiKey;
     const serperKey = decryptCredential(vaultData.serperApiKey) || config.serperApiKey;
+    const elevenlabsKey = decryptCredential(vaultData.appCredentials?.elevenlabs?.elevenlabsApiKey) || decryptCredential(vaultData.elevenlabsApiKey) || config.elevenlabsApiKey;
 
     if (!geminiKey) throw new Error(`Nenhuma GEMINI_API_KEY disponível para o canal ${tenantId}.`);
 
@@ -114,16 +115,21 @@ export async function executeVideoPipeline({ tenantId, jobId, customTopic = null
 
     await setStatus(jobRef, JOB_STATUS.AUDIO_GEN, { script: scriptJson });
 
-    // ---- Stage 3: narration (EdgeTTS) --------------------------------------
+    // ---- Stage 3: narration (EdgeTTS / ElevenLabs) -------------------------
     const narrationText = [scriptJson.hook, ...scriptJson.sections.map(s => s.text)]
       .filter(Boolean)
       .join(' ');
     const audioPath = path.join(workDir, 'speech.mp3');
 
+    const voiceSetting = tenantData.contentConfig?.voiceId || tenantData.voiceTone || 'pt-BR-AntonioNeural';
+    const providerSetting = tenantData.contentConfig?.ttsProvider || (voiceSetting.startsWith('elevenlabs:') ? 'elevenlabs' : 'edge');
+
     const { cues } = await generateSpeech({
       text: narrationText,
       outputFilePath: audioPath,
-      voice: tenantData.contentConfig?.voiceId || 'pt-BR-AntonioNeural',
+      provider: providerSetting,
+      voice: voiceSetting,
+      elevenlabsApiKey: elevenlabsKey,
       rate: tenantData.contentConfig?.ttsSpeed || '+10%'
     });
 
